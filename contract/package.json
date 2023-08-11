@@ -2,7 +2,7 @@
   "name": "hardhat-javascript-starter",
   "scripts": {
     "test": "hardhat test",
-    "watch": "hardhat watch test",
+    "test:watch": "hardhat watch test --network hardhat",
     "coverage": "hardhat coverage",
     "compile": "hardhat compile",
     "build": "npx thirdweb@latest detect",

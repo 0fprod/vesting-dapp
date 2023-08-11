@@ -2,7 +2,7 @@ import { mine } from "@nomicfoundation/hardhat-network-helpers";
 import { BigNumber } from "ethers";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { Token } from "../typechain-types";
+import { Token, Vesting } from "../typechain-types";
 
 export async function moveTimeForwardInWeeks(numberOfWeeks = 1) {
   const oneWeekInSeconds = 604800;
@@ -20,4 +20,15 @@ export function formatUnits(amount: BigNumber): number {
 
 export function mintTokensFor(tokenContract: Token, signer: SignerWithAddress, amount: number) {
   return tokenContract.connect(signer).faucet(signer.address, tokensAmount(amount))
+}
+
+export async function approveAndFundContract(stakingContract: Vesting, tokenContract: Token, amount: number) {
+  const tokens = tokensAmount(amount);
+  await approveWith(tokenContract, stakingContract.address, amount);
+  await stakingContract.fundContractWithErc20Token(tokens)
+}
+
+export async function approveWith(tokenContract: Token, address: string, amount: number) {
+  const tokens = ethers.utils.parseEther(`${amount}`);
+  await tokenContract.approve(address, tokens);
 }
