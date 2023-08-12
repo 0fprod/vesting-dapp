@@ -66,20 +66,6 @@ describe("Vesting contract", function () {
     });
   })
 
-
-
-
-  // VestingContract API
-  // x fundContract(uint256 _amount) -> 1,000,000,000 tokens (1 billion)
-  // addInvestor(address _investor)
-  // addTeamMember(address _teamMember)
-  // addDao(address _Dao)
-  // addInvestors(address[] _investors)
-  // addTeamMembers(address[] _teamMembers)
-  // claim() -> claimable tokens
-  // claimable() -> claimable tokens
-  // claimableAt(uint256 _timestamp) -> claimable tokens
-
   describe('Manage beneficiaries', () => {
     it('adds a team member', async () => {
       const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
@@ -163,6 +149,42 @@ describe("Vesting contract", function () {
     });
   })
 
+  describe('Claiming', () => {
+    // Scenarios
+    // Before the StartDate or the DEX Launch
+    // During the vesting period 
+    // After the vesting period 
+    it('reverts if a non-registered address tries to claim', async () => {
+      const { vestingContract } = await loadFixture(deployFixture);
+      await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotRegistered")
+    });
+
+    describe('as a Team Member', () => {
+      it('reverts if tries to claim before the vesting period', async () => {
+        const startDateInSeconds = new Date('2024-01-01T00:00:00.000Z').getTime() / 1000;
+        const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
+        await vestingContract.setStartDate(startDateInSeconds);
+        await vestingContract.addTeamMember(deployerAddress);
+        await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
+      });
+    });
+
+    describe('as an Investor or DAO', () => {
+      it('reverts if tries to claim before the vesting period', async () => {
+        const dexLaunchDateInSeconds = new Date('2024-01-01T00:00:00.000Z').getTime() / 1000;
+        const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
+        await vestingContract.setDexLaunchDate(dexLaunchDateInSeconds);
+        await vestingContract.addInvestor(deployerAddress);
+        await vestingContract.addDAO(otherSigner.address);
+
+        await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
+        const connectedVestingContract = await vestingContract.connect(otherSigner)
+        await expect(connectedVestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
+      });
+    });
+
+    // it('claims the correct amount of tokens after the vesting period', async () => { });
+  });
 });
 
 
