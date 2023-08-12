@@ -25,13 +25,22 @@ contract Vesting is Ownable, ReentrancyGuard {
     mapping(address => Beneficiary) public teamMembers;
     mapping(address => Beneficiary) public investors;
     mapping(address => Beneficiary) public dao;
+
     uint8 public constant maxDAOAddresses = 1;
     uint8 public numberOfDAOAddresses = 0;
+    uint public startDate;
+    uint public dexLaunchDate;
+    uint public investorsTokensAmount = 0;
+    uint public teamTokensAmount = 0;
+    uint public daoTokensAmount = 0;
 
     constructor(address _token) {
         Token = IERC20(_token);
     }
 
+    /**
+     * @dev Verifies that the address is added only once
+     */
     modifier isNotRegistered(address _beneficiary) {
         if (teamMembers[_beneficiary].isRegistered == true) {
             revert Vesting__AlreadyRegistered();
@@ -47,7 +56,7 @@ contract Vesting is Ownable, ReentrancyGuard {
         _;
     }
 
-    modifier validAddress(address _beneficiary) {
+    modifier isValidAddress(address _beneficiary) {
         if (_beneficiary == address(0)) {
             revert Vesting__InvalidAddress();
         }
@@ -63,13 +72,21 @@ contract Vesting is Ownable, ReentrancyGuard {
         Token.transferFrom(msg.sender, address(this), _amount);
     }
 
+    // TODO: Call only once
+    function initializeTokenDistributionsAmount() public onlyOwner {
+        uint contractsBalance = Token.balanceOf(address(this));
+        teamTokensAmount = calculatePercentageOf(contractsBalance, 20);
+        investorsTokensAmount = calculatePercentageOf(contractsBalance, 5);
+        daoTokensAmount = calculatePercentageOf(contractsBalance, 5);
+    }
+
     /**
      * @dev Adds a team member to the vesting contract
      * @param _member Address of the team member
      */
     function addTeamMember(
         address _member
-    ) public onlyOwner isNotRegistered(_member) validAddress(_member) {
+    ) public onlyOwner isNotRegistered(_member) isValidAddress(_member) {
         teamMembers[_member] = Beneficiary(0, 0, true);
     }
 
@@ -89,7 +106,7 @@ contract Vesting is Ownable, ReentrancyGuard {
      */
     function addInvestor(
         address _investor
-    ) public onlyOwner isNotRegistered(_investor) validAddress(_investor) {
+    ) public onlyOwner isNotRegistered(_investor) isValidAddress(_investor) {
         investors[_investor] = Beneficiary(0, 0, true);
     }
 
@@ -109,11 +126,33 @@ contract Vesting is Ownable, ReentrancyGuard {
      */
     function addDAO(
         address _DAO
-    ) public onlyOwner isNotRegistered(_DAO) validAddress(_DAO) {
+    ) public onlyOwner isNotRegistered(_DAO) isValidAddress(_DAO) {
         if (numberOfDAOAddresses == maxDAOAddresses) {
             revert Vesting__OnlyOneDAOAllowed();
         }
         numberOfDAOAddresses = 1;
         dao[_DAO] = Beneficiary(0, 0, true);
+    }
+
+    // TODO: Call only once
+    function setStartDate(uint _startDate) public onlyOwner {
+        startDate = _startDate;
+    }
+
+    // TODO: Call only once
+    function setDexLaunchDate(uint _dexLaunchDate) public onlyOwner {
+        dexLaunchDate = _dexLaunchDate;
+    }
+
+    /**
+     * @dev Calculates the percentage of a number
+     * @param amount The number to calculate the percentage of
+     * @param percentage The percentage to calculate
+     */
+    function calculatePercentageOf(
+        uint amount,
+        uint percentage
+    ) internal pure returns (uint) {
+        return amount.mul(percentage).div(100);
     }
 }

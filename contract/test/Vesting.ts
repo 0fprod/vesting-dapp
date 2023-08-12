@@ -1,14 +1,15 @@
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { approveAndFundContract, formatUnits, mintTokensFor, moveTimeForwardInWeeks, tokensAmount } from "./helper";
+import { approveAndFundContract, tokensAmount } from "./helper";
 
 describe("Vesting contract", function () {
-  const oneBillion = tokensAmount(1000000000);
+  const oneBillionNumber = 1000000000
+  const oneBillionTokens = tokensAmount(oneBillionNumber);
 
   async function deployErc20Fixture() {
     const tokenFactory = await ethers.getContractFactory("Token");
-    const tokenContract = await tokenFactory.deploy(oneBillion);
+    const tokenContract = await tokenFactory.deploy(oneBillionTokens);
     await tokenContract.deployed();
 
     return { tokenContract };
@@ -33,18 +34,40 @@ describe("Vesting contract", function () {
 
     it('funds the contract with the correct amount of tokens', async () => {
       const { vestingContract, tokenContract } = await loadFixture(deployFixture);
-      await approveAndFundContract(vestingContract, tokenContract, 1000000000);
-      expect(await tokenContract.balanceOf(vestingContract.address)).to.equal(oneBillion);
+      await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
+      expect(await tokenContract.balanceOf(vestingContract.address)).to.equal(oneBillionTokens);
+    });
+
+    it('defines dates', async () => {
+      // DEX Launch is not fixed date.
+      const { vestingContract } = await loadFixture(deployFixture);
+      const startDate = new Date('2023-06-01T00:00:00.000Z');
+      const startDateInSeconds = startDate.getTime() / 1000;
+      await vestingContract.setStartDate(startDateInSeconds);
+      await vestingContract.setDexLaunchDate(startDateInSeconds);
+
+      expect(await vestingContract.startDate()).to.equal(startDateInSeconds);
+      expect(await vestingContract.dexLaunchDate()).to.equal(startDateInSeconds);
+    });
+
+    it('initializes the correct tokens distributions', async () => {
+      // Core team 20% -> 200,000,000 tokens, 5% unlocked since June 2023. Linear vesting over 24 months. Among all the members.
+      // Investors 5% -> 50,000,000 tokens, 5% unlocked at DEX Launch. Linear vesting over 24 months.
+      // DAO 5% -> 50,000,000 tokens, 5% unlocked at DEX Launch. Linear vesting over 36 months. Its one wallet.
+      const { vestingContract, tokenContract } = await loadFixture(deployFixture);
+      const twoHundredMillionTokens = tokensAmount(200000000);
+      const fiftyMillionTokens = tokensAmount(50000000);
+      await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
+      await vestingContract.initializeTokenDistributionsAmount();
+
+      expect(await vestingContract.teamTokensAmount()).to.equal(twoHundredMillionTokens);
+      expect(await vestingContract.investorsTokensAmount()).to.equal(fiftyMillionTokens);
+      expect(await vestingContract.daoTokensAmount()).to.equal(fiftyMillionTokens);
     });
   })
 
 
-  // Not upgradable.
-  // Dont remove beneficiaries.
-  // DEX Launch is not fixed date.
-  // Core team 20% -> 200,000,000 tokens, 5% unlocked since June 2023. Linear vesting over 24 months. Among all the members.
-  // Investors 5% -> 50,000,000 tokens, 5% unlocked at DEX Launch. Linear vesting over 24 months.
-  //  DAO 5% -> 50,000,000 tokens, 5% unlocked at DEX Launch. Linear vesting over 36 months. Its one wallet.
+
 
   // VestingContract API
   // x fundContract(uint256 _amount) -> 1,000,000,000 tokens (1 billion)
@@ -65,13 +88,13 @@ describe("Vesting contract", function () {
     });
 
     it('adds an investor', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
       await vestingContract.addInvestor(deployerAddress);
       expect((await vestingContract.investors(deployerAddress)).isRegistered).to.equal(true);
     });
 
     it('adds a DAO', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
       await vestingContract.addDAO(deployerAddress);
       expect((await vestingContract.dao(deployerAddress)).isRegistered).to.equal(true);
     });
