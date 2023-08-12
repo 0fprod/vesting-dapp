@@ -12,6 +12,7 @@ error Vesting__InvalidAddress();
 error Vesting__OnlyOneDAOAllowed();
 error Vesting__NotRegistered();
 error Vesting__NotVestingPeriod();
+error Vesting__NotAllowedAfterVestingStarted();
 
 contract Vesting is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -54,6 +55,7 @@ contract Vesting is Ownable, ReentrancyGuard {
         _;
     }
 
+     */
     modifier RegisteredOnly(address _beneficiary) {
         if (
             teamMembers[_beneficiary].isRegistered == false &&
@@ -131,6 +133,9 @@ contract Vesting is Ownable, ReentrancyGuard {
     function addTeamMember(
         address _member
     ) public onlyOwner unregisteredOnly(_member) isValidAddress(_member) {
+        if (block.timestamp > startDate) {
+            revert Vesting__NotAllowedAfterVestingStarted();
+        }
         teamMembers[_member] = Beneficiary(0, 0, true);
     }
 
@@ -151,6 +156,9 @@ contract Vesting is Ownable, ReentrancyGuard {
     function addInvestor(
         address _investor
     ) public onlyOwner unregisteredOnly(_investor) isValidAddress(_investor) {
+        if (block.timestamp > dexLaunchDate) {
+            revert Vesting__NotAllowedAfterVestingStarted();
+        }
         investors[_investor] = Beneficiary(0, 0, true);
     }
 
@@ -173,6 +181,9 @@ contract Vesting is Ownable, ReentrancyGuard {
     ) public onlyOwner unregisteredOnly(_DAO) isValidAddress(_DAO) {
         if (numberOfDAOAddresses == maxDAOAddresses) {
             revert Vesting__OnlyOneDAOAllowed();
+        }
+        if (block.timestamp > dexLaunchDate) {
+            revert Vesting__NotAllowedAfterVestingStarted();
         }
         numberOfDAOAddresses = 1;
         dao[_DAO] = Beneficiary(0, 0, true);

@@ -32,3 +32,14 @@ export async function approveWith(tokenContract: Token, address: string, amount:
   const tokens = ethers.utils.parseEther(`${amount}`);
   await tokenContract.approve(address, tokens);
 }
+export function yesterDayDateInSeconds() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return Math.floor(date.getTime() / 1000);
+}
+
+export function tomorrowDateInSeconds() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return Math.floor(date.getTime() / 1000);
+}
