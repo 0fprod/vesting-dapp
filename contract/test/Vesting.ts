@@ -1,7 +1,7 @@
-import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { approveAndFundContract, yesterDayDateInSeconds, tokensAmount, tomorrowDateInSeconds } from "./helper";
+import { approveAndFundContract, yesterDayDateInSeconds, tokensAmount, addTeamMembers, moveTimeForwardInDays, tomorrowDateInSeconds, addInvestors } from "./helper";
 
 describe("Vesting contract", function () {
   const oneBillionNumber = 1000000000
@@ -16,14 +16,14 @@ describe("Vesting contract", function () {
   }
 
   async function deployFixture() {
-    const [deployer, otherSigner] = await ethers.getSigners();
+    const [deployer, otherSigner, anotherSigner] = await ethers.getSigners();
     const deployerAddress = deployer.address
     const { tokenContract } = await loadFixture(deployErc20Fixture);
     const tokenAddress = tokenContract.address;
     const vestingFactory = await ethers.getContractFactory("Vesting")
     const vestingContract = await vestingFactory.deploy(tokenAddress);
 
-    return { vestingContract, tokenContract, deployerAddress, otherSigner };
+    return { vestingContract, tokenContract, deployerAddress, otherSigner, anotherSigner };
   }
 
   describe('Deployment', () => {
@@ -51,17 +51,21 @@ describe("Vesting contract", function () {
     });
 
     it('initializes the correct tokens distributions', async () => {
-      // Core team 20% -> 200,000,000 tokens
-      // Investors 5% -> 50,000,000 tokens,
+      // Core team 20% -> 200,000,000 tokens (5% unlocked -> 10,000,000 tokens)
+      // Investors 5% -> 50,000,000 tokens (5% unlocked -> 2,500,000 tokens)
       // DAO 5% -> 50,000,000 tokens
       const { vestingContract, tokenContract } = await loadFixture(deployFixture);
       const twoHundredMillionTokens = tokensAmount(200000000);
       const fiftyMillionTokens = tokensAmount(50000000);
+      const tenMillionTokens = tokensAmount(10000000);
+      const twoMillionsAndHalfTokens = tokensAmount(2500000);
       await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
       await vestingContract.initializeTokenDistributionsAmount();
 
       expect(await vestingContract.teamTokensAmount()).to.equal(twoHundredMillionTokens);
+      expect(await vestingContract.teamTokensAmountOnUnlock()).to.equal(tenMillionTokens);
       expect(await vestingContract.investorsTokensAmount()).to.equal(fiftyMillionTokens);
+      expect(await vestingContract.investorsTokensAmountOnUnlock()).to.equal(twoMillionsAndHalfTokens);
       expect(await vestingContract.daoTokensAmount()).to.equal(fiftyMillionTokens);
     });
   })
@@ -93,6 +97,7 @@ describe("Vesting contract", function () {
       await vestingContract.addDAO(deployerAddress);
 
       expect((await vestingContract.dao(deployerAddress)).isRegistered).to.equal(true);
+      expect(await vestingContract.daoCount()).to.equal(1);
     });
 
     it('adds several team members', async () => {
@@ -103,6 +108,7 @@ describe("Vesting contract", function () {
 
       expect((await vestingContract.teamMembers(deployerAddress)).isRegistered).to.equal(true);
       expect((await vestingContract.teamMembers(otherSigner.address)).isRegistered).to.equal(true);
+      expect(await vestingContract.teamMembersCount()).to.equal(2);
     });
 
     it('adds several investors', async () => {
@@ -113,6 +119,7 @@ describe("Vesting contract", function () {
 
       expect((await vestingContract.investors(deployerAddress)).isRegistered).to.equal(true);
       expect((await vestingContract.investors(otherSigner.address)).isRegistered).to.equal(true);
+      expect(await vestingContract.investorsCount()).to.equal(2);
     });
 
     it('reverts when adding a team member twice', async () => {
@@ -231,13 +238,30 @@ describe("Vesting contract", function () {
         await vestingContract.addTeamMember(deployerAddress);
         await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
       });
+
+      it('allows to claim the 5% unlock reward', async () => {
+        // 5% of 200,000,000 tokens = 10,000,000 tokens
+        // Each team member gets 5,000,000 tokens
+        const fiveMillionTokens = tokensAmount(5000000);
+        const { vestingContract, tokenContract, anotherSigner, otherSigner } = await loadFixture(deployFixture);
+        await vestingContract.setStartDate(tomorrowDateInSeconds());
+        await addTeamMembers(vestingContract, [otherSigner.address, anotherSigner.address]);
+        await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
+        await vestingContract.initializeTokenDistributionsAmount();
+        await moveTimeForwardInDays(2);
+
+        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(anotherSigner).claim();
+
+        expect(await tokenContract.balanceOf(otherSigner.address)).to.equal(fiveMillionTokens);
+        expect(await tokenContract.balanceOf(anotherSigner.address)).to.equal(fiveMillionTokens);
+      })
     });
 
     describe('as an Investor or DAO', () => {
       it('reverts if tries to claim before the vesting period', async () => {
-        const dexLaunchDateInSeconds = new Date('2024-01-01T00:00:00.000Z').getTime() / 1000;
         const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-        await vestingContract.setDexLaunchDate(dexLaunchDateInSeconds);
+        await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
         await vestingContract.addInvestor(deployerAddress);
         await vestingContract.addDAO(otherSigner.address);
 
@@ -245,9 +269,25 @@ describe("Vesting contract", function () {
         const connectedVestingContract = await vestingContract.connect(otherSigner)
         await expect(connectedVestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
       });
-    });
 
-    // it('claims the correct amount of tokens after the vesting period', async () => { });
+      it('allows to claim the 5% unlock reward', async () => {
+        // 5% of 50,000,000 tokens = 2,500,000 tokens
+        // Each investor gets 1,250,000 tokens
+        const oneMillionTwoHundredFiftyThousandTokens = tokensAmount(1250000);
+        const { vestingContract, tokenContract, anotherSigner, otherSigner } = await loadFixture(deployFixture);
+        await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+        await addInvestors(vestingContract, [otherSigner.address, anotherSigner.address]);
+        await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
+        await vestingContract.initializeTokenDistributionsAmount();
+        await moveTimeForwardInDays(2);
+
+        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(anotherSigner).claim();
+
+        expect(await tokenContract.balanceOf(otherSigner.address)).to.equal(oneMillionTwoHundredFiftyThousandTokens);
+        expect(await tokenContract.balanceOf(anotherSigner.address)).to.equal(oneMillionTwoHundredFiftyThousandTokens);
+      });
+    });
   });
 });
 

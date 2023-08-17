@@ -5,8 +5,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {console} from "hardhat/console.sol";
 
-// import {console} from "hardhat/console.sol";
 error Vesting__AlreadyRegistered();
 error Vesting__InvalidAddress();
 error Vesting__OnlyOneDAOAllowed();
@@ -23,6 +23,7 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint256 amount;
         uint256 claimed;
         bool isRegistered;
+        bool hasClaimedUnlockedTokens;
     }
 
     mapping(address => Beneficiary) public teamMembers;
@@ -30,11 +31,17 @@ contract Vesting is Ownable, ReentrancyGuard {
     mapping(address => Beneficiary) public dao;
 
     uint8 public constant maxDAOAddresses = 1;
-    uint8 public numberOfDAOAddresses = 0;
+    uint8 public daoCount = 0;
+    uint8 public teamMembersCount = 0;
+    uint8 public investorsCount = 0;
+
     uint public startDate;
     uint public dexLaunchDate;
-    uint public investorsTokensAmount = 0;
+
     uint public teamTokensAmount = 0;
+    uint public teamTokensAmountOnUnlock = 0;
+    uint public investorsTokensAmount = 0;
+    uint public investorsTokensAmountOnUnlock = 0;
     uint public daoTokensAmount = 0;
 
     constructor(address _token) {
@@ -55,6 +62,8 @@ contract Vesting is Ownable, ReentrancyGuard {
         _;
     }
 
+    /**
+     * @dev Verifies that the address is registered
      */
     modifier RegisteredOnly(address _beneficiary) {
         if (
@@ -75,17 +84,17 @@ contract Vesting is Ownable, ReentrancyGuard {
     }
 
     function claim() public nonReentrant RegisteredOnly(msg.sender) {
-        if (teamMembers[msg.sender].isRegistered == true) {
+        if (_isTeamMember(msg.sender)) {
             _claimTeamTokens();
             return;
         }
 
-        if (investors[msg.sender].isRegistered == true) {
+        if (_isInvestor(msg.sender)) {
             _claimInvestorsTokens();
             return;
         }
 
-        if (dao[msg.sender].isRegistered == true) {
+        if (_isDAO(msg.sender)) {
             _claimDAOTokens();
             return;
         }
@@ -95,11 +104,23 @@ contract Vesting is Ownable, ReentrancyGuard {
         if (block.timestamp < startDate) {
             revert Vesting__NotVestingPeriod();
         }
+
+        if (!teamMembers[msg.sender].hasClaimedUnlockedTokens) {
+            teamMembers[msg.sender].hasClaimedUnlockedTokens = true;
+            uint amount = teamTokensAmountOnUnlock.div(teamMembersCount);
+            Token.safeTransfer(msg.sender, amount);
+        }
     }
 
     function _claimInvestorsTokens() internal {
         if (block.timestamp < dexLaunchDate) {
             revert Vesting__NotVestingPeriod();
+        }
+
+        if (!investors[msg.sender].hasClaimedUnlockedTokens) {
+            investors[msg.sender].hasClaimedUnlockedTokens = true;
+            uint amount = investorsTokensAmountOnUnlock.div(investorsCount);
+            Token.safeTransfer(msg.sender, amount);
         }
     }
 
@@ -122,7 +143,12 @@ contract Vesting is Ownable, ReentrancyGuard {
     function initializeTokenDistributionsAmount() public onlyOwner {
         uint contractsBalance = Token.balanceOf(address(this));
         teamTokensAmount = calculatePercentageOf(contractsBalance, 20);
+        teamTokensAmountOnUnlock = calculatePercentageOf(teamTokensAmount, 5);
         investorsTokensAmount = calculatePercentageOf(contractsBalance, 5);
+        investorsTokensAmountOnUnlock = calculatePercentageOf(
+            investorsTokensAmount,
+            5
+        );
         daoTokensAmount = calculatePercentageOf(contractsBalance, 5);
     }
 
@@ -136,7 +162,8 @@ contract Vesting is Ownable, ReentrancyGuard {
         if (block.timestamp > startDate) {
             revert Vesting__NotAllowedAfterVestingStarted();
         }
-        teamMembers[_member] = Beneficiary(0, 0, true);
+        teamMembers[_member] = Beneficiary(0, 0, true, false);
+        teamMembersCount++;
     }
 
     /**
@@ -159,7 +186,8 @@ contract Vesting is Ownable, ReentrancyGuard {
         if (block.timestamp > dexLaunchDate) {
             revert Vesting__NotAllowedAfterVestingStarted();
         }
-        investors[_investor] = Beneficiary(0, 0, true);
+        investors[_investor] = Beneficiary(0, 0, true, false);
+        investorsCount++;
     }
 
     /**
@@ -179,14 +207,14 @@ contract Vesting is Ownable, ReentrancyGuard {
     function addDAO(
         address _DAO
     ) public onlyOwner unregisteredOnly(_DAO) isValidAddress(_DAO) {
-        if (numberOfDAOAddresses == maxDAOAddresses) {
+        if (daoCount == maxDAOAddresses) {
             revert Vesting__OnlyOneDAOAllowed();
         }
         if (block.timestamp > dexLaunchDate) {
             revert Vesting__NotAllowedAfterVestingStarted();
         }
-        numberOfDAOAddresses = 1;
-        dao[_DAO] = Beneficiary(0, 0, true);
+        dao[_DAO] = Beneficiary(0, 0, true, false);
+        daoCount = 1;
     }
 
     // TODO: Call only once
@@ -209,5 +237,17 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint percentage
     ) internal pure returns (uint) {
         return amount.mul(percentage).div(100);
+    }
+
+    function _isTeamMember(address _member) internal view returns (bool) {
+        return teamMembers[_member].isRegistered;
+    }
+
+    function _isInvestor(address _investor) internal view returns (bool) {
+        return investors[_investor].isRegistered;
+    }
+
+    function _isDAO(address _DAO) internal view returns (bool) {
+        return dao[_DAO].isRegistered;
     }
 }

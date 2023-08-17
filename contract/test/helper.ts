@@ -4,10 +4,10 @@ import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { Token, Vesting } from "../typechain-types";
 
-export async function moveTimeForwardInWeeks(numberOfWeeks = 1) {
-  const oneWeekInSeconds = 604800;
+export async function moveTimeForwardInDays(numberOfDays = 1) {
+  const oneDayInSeconds = 3600 * 24;
 
-  await mine(2, { interval: oneWeekInSeconds * numberOfWeeks });
+  await mine(2, { interval: oneDayInSeconds * numberOfDays });
 }
 
 export function tokensAmount(amount: number): BigNumber {
@@ -32,6 +32,17 @@ export async function approveWith(tokenContract: Token, address: string, amount:
   const tokens = ethers.utils.parseEther(`${amount}`);
   await tokenContract.approve(address, tokens);
 }
+
+export async function addTeamMembers(vestingContract: Vesting, beneficiaries: string[]) {
+  const promises = beneficiaries.map(beneficiary => vestingContract.addTeamMember(beneficiary));
+  await Promise.all(promises);
+}
+
+export async function addInvestors(vestingContract: Vesting, beneficiaries: string[]) {
+  const promises = beneficiaries.map(beneficiary => vestingContract.addInvestor(beneficiary));
+  await Promise.all(promises);
+}
+
 export function yesterDayDateInSeconds() {
   const date = new Date();
   date.setDate(date.getDate() - 1);
