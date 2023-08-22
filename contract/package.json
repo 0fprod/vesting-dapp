@@ -1,7 +1,7 @@
 {
   "name": "hardhat-javascript-starter",
   "scripts": {
-    "test": "hardhat test",
+    "test": "hardhat test --network hardhat",
     "test:watch": "hardhat watch test --network hardhat",
     "coverage": "hardhat coverage",
     "compile": "hardhat compile",
