@@ -32,11 +32,14 @@ contract Vesting is Ownable, ReentrancyGuard {
 
     uint8 public constant maxDAOAddresses = 1;
     uint8 public daoCount = 0;
-    uint8 public teamMembersCount = 0;
-    uint8 public investorsCount = 0;
+    uint public teamMembersCount = 0;
+    uint public investorsCount = 0;
 
     uint public startDate;
     uint public dexLaunchDate;
+    uint public teamMembersVestingDuration;
+    uint public investorsVestingDuration;
+    uint public daoVestingDuration;
 
     uint public teamTokensAmount = 0;
     uint public teamTokensAmountOnUnlock = 0;
@@ -128,6 +131,16 @@ contract Vesting is Ownable, ReentrancyGuard {
         if (block.timestamp < dexLaunchDate) {
             revert Vesting__NotVestingPeriod();
         }
+        Beneficiary storage beneficiary = dao[msg.sender];
+
+        if (!beneficiary.hasClaimedUnlockedTokens) {
+            beneficiary.hasClaimedUnlockedTokens = true;
+            beneficiary.allocation = daoTokensAmount;
+        }
+
+        uint amount = _available(beneficiary);
+        beneficiary.claimed += amount;
+        Token.safeTransfer(msg.sender, amount);
     }
 
     /**
@@ -140,18 +153,52 @@ contract Vesting is Ownable, ReentrancyGuard {
     }
 
     // TODO: Call only once
+    /**
+     * @dev Initializes the amount of tokens for each distribution
+     * @notice Only the owner can call this function
+     * @notice The amount of tokens should be funded to the contract before calling this function
+     * @notice TeamTokensAmount = 20% of the total contract balance
+     * @notice TeamTokensAmountOnUnlock = 5% of the TeamTokensAmount
+     * @notice InvestorsTokensAmount = 5% of the total contract balance
+     * @notice InvestorsTokensAmountOnUnlock = 5% of the InvestorsTokensAmount
+     * @notice DAOTokensAmount = 5% of the total contract balance
+     */
     function initializeTokenDistributionsAmount() public onlyOwner {
         uint contractsBalance = Token.balanceOf(address(this));
-        teamTokensAmount = calculatePercentageOf(contractsBalance, 20);
-        teamTokensAmountOnUnlock = calculatePercentageOf(teamTokensAmount, 5);
-        investorsTokensAmount = calculatePercentageOf(contractsBalance, 5);
-        investorsTokensAmountOnUnlock = calculatePercentageOf(
+        teamTokensAmount = _calculatePercentageOf(contractsBalance, 20);
+        teamTokensAmountOnUnlock = _calculatePercentageOf(teamTokensAmount, 5);
+        teamTokensAmount = teamTokensAmount.sub(teamTokensAmountOnUnlock);
+
+        investorsTokensAmount = _calculatePercentageOf(contractsBalance, 5);
+        investorsTokensAmountOnUnlock = _calculatePercentageOf(
             investorsTokensAmount,
             5
         );
-        daoTokensAmount = calculatePercentageOf(contractsBalance, 5);
+        investorsTokensAmount = investorsTokensAmount.sub(
+            investorsTokensAmountOnUnlock
+        );
+
+        daoTokensAmount = _calculatePercentageOf(contractsBalance, 5);
     }
 
+    // TODO: Call only once
+    function setStartDate(uint _startDate) public onlyOwner {
+        startDate = _startDate;
+        // Initialize durations
+        teamMembersVestingDuration = 730 days; // 2 years
+    }
+
+    // TODO: Call only once
+    function setDexLaunchDate(uint _dexLaunchDate) public onlyOwner {
+        dexLaunchDate = _dexLaunchDate;
+        // Initialize durations
+        investorsVestingDuration = 730 days; // 2 years
+        daoVestingDuration = 1095 days; // 3 years
+    }
+
+    // /////////////////// //
+    // Add addresses block //
+    // /////////////////// //
     /**
      * @dev Adds a team member to the vesting contract
      * @param _member Address of the team member
@@ -232,7 +279,7 @@ contract Vesting is Ownable, ReentrancyGuard {
      * @param amount The number to calculate the percentage of
      * @param percentage The percentage to calculate
      */
-    function calculatePercentageOf(
+    function _calculatePercentageOf(
         uint amount,
         uint percentage
     ) internal pure returns (uint) {
@@ -249,5 +296,83 @@ contract Vesting is Ownable, ReentrancyGuard {
 
     function _isDAO(address _DAO) internal view returns (bool) {
         return dao[_DAO].isRegistered;
+    }
+
+    function _available(
+        Beneficiary memory beneficiary
+    ) internal view returns (uint) {
+        if (_isTeamMember(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    beneficiary,
+                    startDate,
+                    teamMembersVestingDuration
+                ).sub(beneficiary.claimed);
+        }
+
+        if (_isInvestor(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    beneficiary,
+                    dexLaunchDate,
+                    investorsVestingDuration
+                ).sub(beneficiary.claimed);
+        }
+
+        if (_isDAO(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    beneficiary,
+                    dexLaunchDate,
+                    daoVestingDuration
+                ).sub(beneficiary.claimed);
+        }
+    }
+
+    function _released(address address_) internal view returns (uint) {
+        if (_isTeamMember(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    teamMembers[address_],
+                    startDate,
+                    teamMembersVestingDuration
+                );
+        }
+
+        if (_isInvestor(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    investors[address_],
+                    dexLaunchDate,
+                    investorsVestingDuration
+                );
+        }
+
+        if (_isDAO(msg.sender)) {
+            return
+                _getReleasedAmountFromBeneficiary(
+                    dao[address_],
+                    dexLaunchDate,
+                    daoVestingDuration
+                );
+        }
+    }
+
+    function _getReleasedAmountFromBeneficiary(
+        Beneficiary memory beneficiary,
+        uint _startDate,
+        uint _duration
+    ) internal view returns (uint) {
+        uint _now = block.timestamp;
+        uint allocation = beneficiary.allocation;
+        uint _endPeriod = _startDate + _duration;
+
+        if (_now > _endPeriod) {
+            return allocation;
+        } else {
+            uint timePassed = _now - _startDate;
+            uint amount = (allocation.mul(timePassed)).div(_duration);
+            return amount;
+        }
     }
 }
