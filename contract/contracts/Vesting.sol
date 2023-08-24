@@ -20,7 +20,7 @@ contract Vesting is Ownable, ReentrancyGuard {
     IERC20 public immutable Token;
 
     struct Beneficiary {
-        uint256 amount;
+        uint256 allocation;
         uint256 claimed;
         bool isRegistered;
         bool hasClaimedUnlockedTokens;
@@ -119,12 +119,18 @@ contract Vesting is Ownable, ReentrancyGuard {
         if (block.timestamp < dexLaunchDate) {
             revert Vesting__NotVestingPeriod();
         }
+        Beneficiary storage beneficiary = investors[msg.sender];
+        uint unlockBonus = 0;
 
-        if (!investors[msg.sender].hasClaimedUnlockedTokens) {
-            investors[msg.sender].hasClaimedUnlockedTokens = true;
-            uint amount = investorsTokensAmountOnUnlock.div(investorsCount);
-            Token.safeTransfer(msg.sender, amount);
+        if (!beneficiary.hasClaimedUnlockedTokens) {
+            unlockBonus = investorsTokensAmountOnUnlock.div(investorsCount);
+            beneficiary.hasClaimedUnlockedTokens = true;
+            beneficiary.allocation = investorsTokensAmount.div(investorsCount);
         }
+
+        uint amount = _available(beneficiary) + unlockBonus;
+        beneficiary.claimed += amount;
+        Token.safeTransfer(msg.sender, amount);
     }
 
     function _claimDAOTokens() internal {
