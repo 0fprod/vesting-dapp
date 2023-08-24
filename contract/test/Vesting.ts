@@ -97,22 +97,31 @@ describe("Vesting contract", function () {
   })
 
   describe('Manage beneficiaries', () => {
-    it('adds a team member', async () => {
-      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+    it('adds team members', async () => {
+      const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
+      await vestingContract.addTeamMembers([aSigner.address, anotherSigner.address]);
 
       expect((await vestingContract.teamMembers(deployerAddress)).isRegistered).to.equal(true);
+      expect((await vestingContract.teamMembers(aSigner.address)).isRegistered).to.equal(true);
+      expect((await vestingContract.teamMembers(anotherSigner.address)).isRegistered).to.equal(true);
+      expect(await vestingContract.teamMembersCount()).to.equal(3);
     });
 
     it('adds an investor', async () => {
-      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
+      await vestingContract.addInvestors([aSigner.address, anotherSigner.address]);
 
       expect((await vestingContract.investors(deployerAddress)).isRegistered).to.equal(true);
+      expect((await vestingContract.investors(aSigner.address)).isRegistered).to.equal(true);
+      expect((await vestingContract.investors(anotherSigner.address)).isRegistered).to.equal(true);
+      expect(await vestingContract.investorsCount()).to.equal(3);
     });
 
     it('adds a DAO', async () => {
@@ -125,52 +134,16 @@ describe("Vesting contract", function () {
       expect(await vestingContract.daoCount()).to.equal(1);
     });
 
-    it('adds several team members', async () => {
-      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+    it('reverts when adding addresses twice', async () => {
+      const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
-
-      await vestingContract.addTeamMembers([deployerAddress, aDifferentSigner.address]);
-
-      expect((await vestingContract.teamMembers(deployerAddress)).isRegistered).to.equal(true);
-      expect((await vestingContract.teamMembers(aDifferentSigner.address)).isRegistered).to.equal(true);
-      expect(await vestingContract.teamMembersCount()).to.equal(2);
-    });
-
-    it('adds several investors', async () => {
-      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-
-      await vestingContract.addInvestors([deployerAddress, aDifferentSigner.address]);
-
-      expect((await vestingContract.investors(deployerAddress)).isRegistered).to.equal(true);
-      expect((await vestingContract.investors(aDifferentSigner.address)).isRegistered).to.equal(true);
-      expect(await vestingContract.investorsCount()).to.equal(2);
-    });
-
-    it('reverts when adding a team member twice', async () => {
-      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowTimestamp);
-
-      await vestingContract.addTeamMember(deployerAddress);
-
-      await expect(vestingContract.addTeamMember(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-    });
-
-    it('reverts when adding an investor twice', async () => {
-      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-
-      await vestingContract.addInvestor(deployerAddress);
-
-      await expect(vestingContract.addInvestor(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-    });
-
-    it('reverts when adding a DAO twice', async () => {
-      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-
+      await vestingContract.addTeamMember(aSigner.address);
+      await vestingContract.addInvestor(anotherSigner.address);
       await vestingContract.addDAO(deployerAddress);
 
+      await expect(vestingContract.addTeamMember(aSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addInvestor(anotherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
       await expect(vestingContract.addDAO(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
     });
 
@@ -183,60 +156,31 @@ describe("Vesting contract", function () {
       await expect(vestingContract.addDAO(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__OnlyOneDAOAllowed")
     });
 
-    it('reverts if a team member or dao is added as investor', async () => {
-      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+    it('reverts if a registered address is added to a different group', async () => {
+      const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
-      await vestingContract.addDAO(aDifferentSigner.address);
-
       await expect(vestingContract.addInvestor(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addInvestor(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-    });
-
-    it('reverts if an investor or dao is added as team member', async () => {
-      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-      await vestingContract.setStartDate(tomorrowTimestamp);
-
-      await vestingContract.addInvestor(deployerAddress);
-      await vestingContract.addDAO(aDifferentSigner.address);
-
-      await expect(vestingContract.addTeamMember(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addTeamMember(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-    });
-
-    it('reverts if an investor or team member is added as DAO', async () => {
-      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowTimestamp);
-      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-
-      await vestingContract.addInvestor(deployerAddress);
-      await vestingContract.addTeamMember(aDifferentSigner.address);
-
       await expect(vestingContract.addDAO(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addDAO(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+
+      await vestingContract.addInvestor(aSigner.address);
+      await expect(vestingContract.addTeamMember(aSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addDAO(aSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+
+      await vestingContract.addDAO(anotherSigner.address);
+      await expect(vestingContract.addInvestor(anotherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addTeamMember(anotherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
     });
 
-    it('reverts if a team member is added after the vesting period started', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(await time.latest() - time.duration.days(1));
+    it('reverts when adding addresses after the vesting period started', async () => {
+      const { vestingContract, deployerAddress, yesterdayTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(yesterdayTimestamp);
+      await vestingContract.setDexLaunchDate(yesterdayTimestamp);
 
       await expect(vestingContract.addTeamMember(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
-    });
-
-    it('reverts if an investor is added after the vesting period started', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(await time.latest() - time.duration.days(1));
-
       await expect(vestingContract.addInvestor(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
-    });
-
-    it('reverts if a DAO is added after the vesting period started', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(await time.latest() - time.duration.days(1));
-
       await expect(vestingContract.addDAO(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
     });
   })
@@ -416,7 +360,7 @@ describe("Vesting contract", function () {
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
         await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
-        //TODO: Review this
+        // TODO: Review this
         await time.increase((time.duration.days((numberOfDaysInTwoYears / 2) - 2.5)));
         // Act
         await vestingContract.connect(aDifferentSigner).claim();
