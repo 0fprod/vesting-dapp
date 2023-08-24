@@ -103,16 +103,26 @@ contract Vesting is Ownable, ReentrancyGuard {
         }
     }
 
+    // function available() public RegisteredOnly(msg.sender) returns (uint) {
+    //     return _available(msg.sender);
+    // }
+
     function _claimTeamTokens() internal {
         if (block.timestamp < startDate) {
             revert Vesting__NotVestingPeriod();
         }
+        Beneficiary storage beneficiary = teamMembers[msg.sender];
+        uint unlockBonus = 0;
 
-        if (!teamMembers[msg.sender].hasClaimedUnlockedTokens) {
-            teamMembers[msg.sender].hasClaimedUnlockedTokens = true;
-            uint amount = teamTokensAmountOnUnlock.div(teamMembersCount);
-            Token.safeTransfer(msg.sender, amount);
+        if (!beneficiary.hasClaimedUnlockedTokens) {
+            unlockBonus = teamTokensAmountOnUnlock.div(teamMembersCount);
+            beneficiary.hasClaimedUnlockedTokens = true;
+            beneficiary.allocation = teamTokensAmount.div(teamMembersCount);
         }
+
+        uint amount = _available(beneficiary) + unlockBonus;
+        beneficiary.claimed += amount;
+        Token.safeTransfer(msg.sender, amount);
     }
 
     function _claimInvestorsTokens() internal {
@@ -268,16 +278,6 @@ contract Vesting is Ownable, ReentrancyGuard {
         }
         dao[_DAO] = Beneficiary(0, 0, true, false);
         daoCount = 1;
-    }
-
-    // TODO: Call only once
-    function setStartDate(uint _startDate) public onlyOwner {
-        startDate = _startDate;
-    }
-
-    // TODO: Call only once
-    function setDexLaunchDate(uint _dexLaunchDate) public onlyOwner {
-        dexLaunchDate = _dexLaunchDate;
     }
 
     /**
