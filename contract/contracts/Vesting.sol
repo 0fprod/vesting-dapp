@@ -134,14 +134,19 @@ contract Vesting is Ownable, ReentrancyGuard {
             _beneficiary.allocation = _allocation / _numberOfParticipants;
         }
 
-        uint amount = _available(_beneficiary) + unlockBonus;
+        uint amount = _available() + unlockBonus;
         _beneficiary.claimed += amount;
         Token.safeTransfer(msg.sender, amount);
     }
 
-    // function available() public RegisteredOnly(msg.sender) returns (uint) {
-    //     return _available(msg.sender);
-    // }
+    function available()
+        external
+        view
+        RegisteredOnly(msg.sender)
+        returns (uint availableTokens)
+    {
+        return _available();
+    }
 
     /**
      * @dev Funds the contract with ERC20 tokens
@@ -191,9 +196,6 @@ contract Vesting is Ownable, ReentrancyGuard {
         daoVestingDuration = 1095 days; // 3 years
     }
 
-    // /////////////////// //
-    // Add addresses block //
-    // /////////////////// //
     /**
      * @dev Adds a team member to the vesting contract
      * @param _member Address of the team member
@@ -259,6 +261,56 @@ contract Vesting is Ownable, ReentrancyGuard {
         daoCount = 1;
     }
 
+    function _released(
+        Beneficiary memory beneficiary,
+        uint _startDate,
+        uint _duration
+    ) internal view returns (uint) {
+        uint _now = block.timestamp;
+        uint allocation = beneficiary.allocation;
+        uint _endPeriod = _startDate + _duration;
+
+        if (_now > _endPeriod) {
+            return allocation;
+        } else {
+            uint timePassed = _now - _startDate;
+            uint amount = (allocation * timePassed) / _duration;
+            return amount;
+        }
+    }
+
+    function _available() internal view returns (uint availableTokens) {
+        if (_isTeamMember(msg.sender)) {
+            Beneficiary memory beneficiary = teamMembers[msg.sender];
+            uint released = _released(
+                beneficiary,
+                startDate,
+                teamMembersVestingDuration
+            );
+            return released - beneficiary.claimed;
+        }
+
+        if (_isInvestor(msg.sender)) {
+            Beneficiary memory beneficiary = investors[msg.sender];
+            uint released = _released(
+                beneficiary,
+                dexLaunchDate,
+                investorsVestingDuration
+            );
+            return released - beneficiary.claimed;
+        }
+
+        if (_isDAO(msg.sender)) {
+            Beneficiary memory beneficiary = dao[msg.sender];
+            uint released = _released(
+                beneficiary,
+                dexLaunchDate,
+                daoVestingDuration
+            );
+            return released - beneficiary.claimed;
+        }
+    }
+
     /**
      * @dev Calculates the percentage of a number
      * @param amount The number to calculate the percentage of
@@ -281,83 +333,5 @@ contract Vesting is Ownable, ReentrancyGuard {
 
     function _isDAO(address _DAO) internal view returns (bool) {
         return dao[_DAO].isRegistered;
-    }
-
-    function _available(
-        Beneficiary memory beneficiary
-    ) internal view returns (uint) {
-        if (_isTeamMember(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    beneficiary,
-                    startDate,
-                    teamMembersVestingDuration
-                ) - beneficiary.claimed;
-        }
-
-        if (_isInvestor(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    beneficiary,
-                    dexLaunchDate,
-                    investorsVestingDuration
-                ) - beneficiary.claimed;
-        }
-
-        if (_isDAO(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    beneficiary,
-                    dexLaunchDate,
-                    daoVestingDuration
-                ) - beneficiary.claimed;
-        }
-    }
-
-    function _released(address address_) internal view returns (uint) {
-        if (_isTeamMember(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    teamMembers[address_],
-                    startDate,
-                    teamMembersVestingDuration
-                );
-        }
-
-        if (_isInvestor(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    investors[address_],
-                    dexLaunchDate,
-                    investorsVestingDuration
-                );
-        }
-
-        if (_isDAO(msg.sender)) {
-            return
-                _getReleasedAmountFromBeneficiary(
-                    dao[address_],
-                    dexLaunchDate,
-                    daoVestingDuration
-                );
-        }
-    }
-
-    function _getReleasedAmountFromBeneficiary(
-        Beneficiary memory beneficiary,
-        uint _startDate,
-        uint _duration
-    ) internal view returns (uint) {
-        uint _now = block.timestamp;
-        uint allocation = beneficiary.allocation;
-        uint _endPeriod = _startDate + _duration;
-
-        if (_now > _endPeriod) {
-            return allocation;
-        } else {
-            uint timePassed = _now - _startDate;
-            uint amount = (allocation * timePassed) / _duration;
-            return amount;
-        }
     }
 }
