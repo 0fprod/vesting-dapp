@@ -3,7 +3,6 @@ pragma solidity ^0.8.11;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {console} from "hardhat/console.sol";
 
@@ -16,7 +15,6 @@ error Vesting__NotAllowedAfterVestingStarted();
 
 contract Vesting is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
     IERC20 public immutable Token;
 
     struct Beneficiary {
@@ -115,9 +113,9 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint unlockBonus = 0;
 
         if (!beneficiary.hasClaimedUnlockedTokens) {
-            unlockBonus = teamTokensAmountOnUnlock.div(teamMembersCount);
+            unlockBonus = teamTokensAmountOnUnlock / teamMembersCount;
             beneficiary.hasClaimedUnlockedTokens = true;
-            beneficiary.allocation = teamTokensAmount.div(teamMembersCount);
+            beneficiary.allocation = teamTokensAmount / teamMembersCount;
         }
 
         uint amount = _available(beneficiary) + unlockBonus;
@@ -133,9 +131,9 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint unlockBonus = 0;
 
         if (!beneficiary.hasClaimedUnlockedTokens) {
-            unlockBonus = investorsTokensAmountOnUnlock.div(investorsCount);
+            unlockBonus = investorsTokensAmountOnUnlock / investorsCount;
             beneficiary.hasClaimedUnlockedTokens = true;
-            beneficiary.allocation = investorsTokensAmount.div(investorsCount);
+            beneficiary.allocation = investorsTokensAmount / investorsCount;
         }
 
         uint amount = _available(beneficiary) + unlockBonus;
@@ -183,16 +181,16 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint contractsBalance = Token.balanceOf(address(this));
         teamTokensAmount = _calculatePercentageOf(contractsBalance, 20);
         teamTokensAmountOnUnlock = _calculatePercentageOf(teamTokensAmount, 5);
-        teamTokensAmount = teamTokensAmount.sub(teamTokensAmountOnUnlock);
+        teamTokensAmount = teamTokensAmount - teamTokensAmountOnUnlock;
 
         investorsTokensAmount = _calculatePercentageOf(contractsBalance, 5);
         investorsTokensAmountOnUnlock = _calculatePercentageOf(
             investorsTokensAmount,
             5
         );
-        investorsTokensAmount = investorsTokensAmount.sub(
-            investorsTokensAmountOnUnlock
-        );
+        investorsTokensAmount =
+            investorsTokensAmount -
+            investorsTokensAmountOnUnlock;
 
         daoTokensAmount = _calculatePercentageOf(contractsBalance, 5);
     }
@@ -289,7 +287,7 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint amount,
         uint percentage
     ) internal pure returns (uint) {
-        return amount.mul(percentage).div(100);
+        return (amount * percentage) / 100;
     }
 
     function _isTeamMember(address _member) internal view returns (bool) {
@@ -313,7 +311,7 @@ contract Vesting is Ownable, ReentrancyGuard {
                     beneficiary,
                     startDate,
                     teamMembersVestingDuration
-                ).sub(beneficiary.claimed);
+                ) - beneficiary.claimed;
         }
 
         if (_isInvestor(msg.sender)) {
@@ -322,7 +320,7 @@ contract Vesting is Ownable, ReentrancyGuard {
                     beneficiary,
                     dexLaunchDate,
                     investorsVestingDuration
-                ).sub(beneficiary.claimed);
+                ) - beneficiary.claimed;
         }
 
         if (_isDAO(msg.sender)) {
@@ -331,7 +329,7 @@ contract Vesting is Ownable, ReentrancyGuard {
                     beneficiary,
                     dexLaunchDate,
                     daoVestingDuration
-                ).sub(beneficiary.claimed);
+                ) - beneficiary.claimed;
         }
     }
 
@@ -377,7 +375,7 @@ contract Vesting is Ownable, ReentrancyGuard {
             return allocation;
         } else {
             uint timePassed = _now - _startDate;
-            uint amount = (allocation.mul(timePassed)).div(_duration);
+            uint amount = (allocation * timePassed) / _duration;
             return amount;
         }
     }
