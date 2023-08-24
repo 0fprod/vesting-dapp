@@ -1,7 +1,7 @@
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { approveAndFundContract, yesterDayDateInSeconds, tokensAmount, tomorrowDateInSeconds, addInvestors } from "./helper";
+import { approveAndFundContract, tokensAmount } from "./helper";
 
 describe("Vesting contract", function () {
   const oneBillionNumber = 1000000000
@@ -24,8 +24,18 @@ describe("Vesting contract", function () {
     const tokenAddress = tokenContract.address;
     const vestingFactory = await ethers.getContractFactory("Vesting")
     const vestingContract = await vestingFactory.deploy(tokenAddress);
+    const tomorrowTimestamp = await time.latest() + time.duration.days(1);
+    const yesterdayTimestamp = await time.latest() - time.duration.days(1);
 
-    return { vestingContract, tokenContract, deployerAddress, otherSigner, anotherSigner };
+    return {
+      vestingContract,
+      tokenContract,
+      deployerAddress,
+      otherSigner,
+      anotherSigner,
+      tomorrowTimestamp,
+      yesterdayTimestamp
+    };
   }
 
   describe('Deployment', () => {
@@ -42,14 +52,12 @@ describe("Vesting contract", function () {
 
     it('defines dates', async () => {
       // DEX Launch is not fixed date.
-      const { vestingContract } = await loadFixture(deployFixture);
-      const startDate = new Date('2023-06-01T00:00:00.000Z');
-      const startDateInSeconds = startDate.getTime() / 1000;
-      await vestingContract.setStartDate(startDateInSeconds);
-      await vestingContract.setDexLaunchDate(startDateInSeconds);
+      const { vestingContract, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
-      expect(await vestingContract.startDate()).to.equal(startDateInSeconds);
-      expect(await vestingContract.dexLaunchDate()).to.equal(startDateInSeconds);
+      expect(await vestingContract.startDate()).to.equal(tomorrowTimestamp);
+      expect(await vestingContract.dexLaunchDate()).to.equal(tomorrowTimestamp);
     });
 
     it('initializes the correct tokens distributions', async () => {
@@ -57,26 +65,26 @@ describe("Vesting contract", function () {
       // Investors 5% -> 50,000,000 tokens (5% unlocked -> 2,500,000 tokens)
       // DAO 5% -> 50,000,000 tokens
       const { vestingContract, tokenContract } = await loadFixture(deployFixture);
-      const twoHundredMillionTokens = tokensAmount(200000000);
-      const fiftyMillionTokens = tokensAmount(50000000);
-      const tenMillionTokens = tokensAmount(10000000);
-      const twoMillionsAndHalfTokens = tokensAmount(2500000);
+      const teamMembersAllocation = tokensAmount(200000000);
+      const investorsAndDaoAllocation = tokensAmount(50000000);
+      const teamMembersUnlockBonus = tokensAmount(10000000);
+      const investorsUnlockBonus = tokensAmount(2500000);
       await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
       await vestingContract.initializeTokenDistributionsAmount();
 
-      expect(await vestingContract.teamTokensAmount()).to.equal(twoHundredMillionTokens.sub(tenMillionTokens));
-      expect(await vestingContract.teamTokensAmountOnUnlock()).to.equal(tenMillionTokens);
-      expect(await vestingContract.investorsTokensAmount()).to.equal(fiftyMillionTokens.sub(twoMillionsAndHalfTokens));
-      expect(await vestingContract.investorsTokensAmountOnUnlock()).to.equal(twoMillionsAndHalfTokens);
-      expect(await vestingContract.daoTokensAmount()).to.equal(fiftyMillionTokens);
+      expect(await vestingContract.teamTokensAmount()).to.equal(teamMembersAllocation.sub(teamMembersUnlockBonus));
+      expect(await vestingContract.teamTokensAmountOnUnlock()).to.equal(teamMembersUnlockBonus);
+      expect(await vestingContract.investorsTokensAmount()).to.equal(investorsAndDaoAllocation.sub(investorsUnlockBonus));
+      expect(await vestingContract.investorsTokensAmountOnUnlock()).to.equal(investorsUnlockBonus);
+      expect(await vestingContract.daoTokensAmount()).to.equal(investorsAndDaoAllocation);
     });
   })
 
 
   describe('Manage beneficiaries', () => {
     it('adds a team member', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
 
@@ -84,8 +92,8 @@ describe("Vesting contract", function () {
     });
 
     it('adds an investor', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
 
@@ -93,8 +101,8 @@ describe("Vesting contract", function () {
     });
 
     it('adds a DAO', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addDAO(deployerAddress);
 
@@ -103,8 +111,8 @@ describe("Vesting contract", function () {
     });
 
     it('adds several team members', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMembers([deployerAddress, otherSigner.address]);
 
@@ -114,8 +122,8 @@ describe("Vesting contract", function () {
     });
 
     it('adds several investors', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestors([deployerAddress, otherSigner.address]);
 
@@ -125,8 +133,8 @@ describe("Vesting contract", function () {
     });
 
     it('reverts when adding a team member twice', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
 
@@ -134,8 +142,8 @@ describe("Vesting contract", function () {
     });
 
     it('reverts when adding an investor twice', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
 
@@ -143,8 +151,8 @@ describe("Vesting contract", function () {
     });
 
     it('reverts when adding a DAO twice', async () => {
-      const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addDAO(deployerAddress);
 
@@ -152,8 +160,8 @@ describe("Vesting contract", function () {
     });
 
     it('reverts when adding a different DAO address', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addDAO(deployerAddress);
 
@@ -161,9 +169,9 @@ describe("Vesting contract", function () {
     });
 
     it('reverts if a team member or dao is added as investor', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
       await vestingContract.addDAO(otherSigner.address);
@@ -173,9 +181,9 @@ describe("Vesting contract", function () {
     });
 
     it('reverts if an investor or dao is added as team member', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
+      await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
       await vestingContract.addDAO(otherSigner.address);
@@ -185,9 +193,9 @@ describe("Vesting contract", function () {
     });
 
     it('reverts if an investor or team member is added as DAO', async () => {
-      const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(tomorrowDateInSeconds());
-      await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      await vestingContract.setStartDate(tomorrowTimestamp);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
       await vestingContract.addTeamMember(otherSigner.address);
@@ -198,21 +206,21 @@ describe("Vesting contract", function () {
 
     it('reverts if a team member is added after the vesting period started', async () => {
       const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setStartDate(yesterDayDateInSeconds());
+      await vestingContract.setStartDate(await time.latest() - time.duration.days(1));
 
       await expect(vestingContract.addTeamMember(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
     });
 
     it('reverts if an investor is added after the vesting period started', async () => {
       const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(yesterDayDateInSeconds());
+      await vestingContract.setDexLaunchDate(await time.latest() - time.duration.days(1));
 
       await expect(vestingContract.addInvestor(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
     });
 
     it('reverts if a DAO is added after the vesting period started', async () => {
       const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-      await vestingContract.setDexLaunchDate(yesterDayDateInSeconds());
+      await vestingContract.setDexLaunchDate(await time.latest() - time.duration.days(1));
 
       await expect(vestingContract.addDAO(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__NotAllowedAfterVestingStarted")
     });
@@ -344,8 +352,8 @@ describe("Vesting contract", function () {
 
     describe('as an Investor', () => {
       it('reverts if tries to claim before the vesting period', async () => {
-        const { vestingContract, deployerAddress, otherSigner } = await loadFixture(deployFixture);
-        await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+        const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+        await vestingContract.setDexLaunchDate(tomorrowTimestamp);
         await vestingContract.addInvestor(deployerAddress);
 
         await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
@@ -361,7 +369,7 @@ describe("Vesting contract", function () {
         const { vestingContract, tokenContract, anotherSigner, otherSigner } = await loadFixture(deployFixture);
         const tomorrow = await time.latest() + time.duration.seconds(10);
         await vestingContract.setDexLaunchDate(tomorrow);
-        await addInvestors(vestingContract, [otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
         await vestingContract.initializeTokenDistributionsAmount();
         await time.increaseTo(tomorrow);
@@ -396,7 +404,7 @@ describe("Vesting contract", function () {
         const delta = tokensAmount(1);
         const tomorrow = await time.latest() + time.duration.seconds(10);
         await vestingContract.setDexLaunchDate(tomorrow);
-        await addInvestors(vestingContract, [otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
         await vestingContract.initializeTokenDistributionsAmount();
         await time.increaseTo(tomorrow);
@@ -433,7 +441,7 @@ describe("Vesting contract", function () {
         const delta = tokensAmount(1);
         const tomorrow = await time.latest() + time.duration.seconds(10);
         await vestingContract.setDexLaunchDate(tomorrow);
-        await addInvestors(vestingContract, [otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
         await vestingContract.initializeTokenDistributionsAmount();
         await time.increaseTo(tomorrow);
@@ -459,8 +467,8 @@ describe("Vesting contract", function () {
 
     describe('as a DAO', () => {
       it('reverts if tries to claim before the vesting period', async () => {
-        const { vestingContract, deployerAddress } = await loadFixture(deployFixture);
-        await vestingContract.setDexLaunchDate(tomorrowDateInSeconds());
+        const { vestingContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+        await vestingContract.setDexLaunchDate(tomorrowTimestamp);
         await vestingContract.addDAO(deployerAddress);
 
         await expect(vestingContract.claim()).to.be.revertedWithCustomError(vestingContract, "Vesting__NotVestingPeriod")
@@ -489,8 +497,8 @@ describe("Vesting contract", function () {
 
       it('allows to claims the correct amount at 100% of the vesting period', async () => {
         const allocation = tokensAmount(50000000);
-        const { vestingContract, tokenContract, deployerAddress } = await loadFixture(deployFixture);
-        const tomorrow = await time.latest() + time.duration.days(1);
+        const { vestingContract, tokenContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
+        const tomorrow = tomorrowTimestamp;
         await vestingContract.setDexLaunchDate(tomorrow);
         await vestingContract.addDAO(deployerAddress);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
