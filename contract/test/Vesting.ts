@@ -18,7 +18,7 @@ describe("Vesting contract", function () {
   }
 
   async function deployFixture() {
-    const [deployer, otherSigner, anotherSigner] = await ethers.getSigners();
+    const [deployer, aSigner, aDifferentSigner, anotherSigner] = await ethers.getSigners();
     const deployerAddress = deployer.address
     const { tokenContract } = await loadFixture(deployErc20Fixture);
     const tokenAddress = tokenContract.address;
@@ -31,8 +31,9 @@ describe("Vesting contract", function () {
       vestingContract,
       tokenContract,
       deployerAddress,
-      otherSigner,
+      aSigner,
       anotherSigner,
+      aDifferentSigner,
       tomorrowTimestamp,
       yesterdayTimestamp
     };
@@ -66,20 +67,32 @@ describe("Vesting contract", function () {
       // Investors 5% -> 50,000,000 tokens (5% unlocked after DEX Launch -> 2,500,000 tokens)
       //       DAO 5% -> 50,000,000 tokens
       // Arrange
-      const { vestingContract, tokenContract } = await loadFixture(deployFixture);
+      const { vestingContract, tokenContract, deployerAddress, aSigner, anotherSigner, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const [someOtherSigner] = (await ethers.getSigners()).splice(-1);
+      const teamMembersAddreses = [deployerAddress, aSigner.address]
+      const investorsAddresses = [anotherSigner.address, aDifferentSigner.address]
+      const daoAddress = someOtherSigner;
       const teamMembersAllocation = tokensAmount(200000000);
-      const investorsAndDaoAllocation = tokensAmount(50000000);
       const teamMembersUnlockBonus = tokensAmount(10000000);
+      const investorsAndDaoAllocation = tokensAmount(50000000);
       const investorsUnlockBonus = tokensAmount(2500000);
       await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
+      await vestingContract.setDexLaunchDate(tomorrowTimestamp);
+      await vestingContract.setStartDate(tomorrowTimestamp);
       // Act
-      await vestingContract.initializeTokenDistributionsAmount();
+      await vestingContract.addTeamMembers(teamMembersAddreses);
+      await vestingContract.addInvestors(investorsAddresses);
+      await vestingContract.addDAO(daoAddress.address);
+      await vestingContract.initializeTokenDistribution();
       // Assert
       expect(await vestingContract.teamTokensAmount()).to.equal(teamMembersAllocation.sub(teamMembersUnlockBonus));
       expect(await vestingContract.teamTokensAmountOnUnlock()).to.equal(teamMembersUnlockBonus);
       expect(await vestingContract.investorsTokensAmount()).to.equal(investorsAndDaoAllocation.sub(investorsUnlockBonus));
       expect(await vestingContract.investorsTokensAmountOnUnlock()).to.equal(investorsUnlockBonus);
       expect(await vestingContract.daoTokensAmount()).to.equal(investorsAndDaoAllocation);
+      expect(await vestingContract.investorsCount()).to.equal(investorsAddresses.length);
+      expect(await vestingContract.teamMembersCount()).to.equal(teamMembersAddreses.length);
+      expect(await vestingContract.daoCount()).to.equal(1);
     });
   })
 
@@ -113,24 +126,24 @@ describe("Vesting contract", function () {
     });
 
     it('adds several team members', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
 
-      await vestingContract.addTeamMembers([deployerAddress, otherSigner.address]);
+      await vestingContract.addTeamMembers([deployerAddress, aDifferentSigner.address]);
 
       expect((await vestingContract.teamMembers(deployerAddress)).isRegistered).to.equal(true);
-      expect((await vestingContract.teamMembers(otherSigner.address)).isRegistered).to.equal(true);
+      expect((await vestingContract.teamMembers(aDifferentSigner.address)).isRegistered).to.equal(true);
       expect(await vestingContract.teamMembersCount()).to.equal(2);
     });
 
     it('adds several investors', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
-      await vestingContract.addInvestors([deployerAddress, otherSigner.address]);
+      await vestingContract.addInvestors([deployerAddress, aDifferentSigner.address]);
 
       expect((await vestingContract.investors(deployerAddress)).isRegistered).to.equal(true);
-      expect((await vestingContract.investors(otherSigner.address)).isRegistered).to.equal(true);
+      expect((await vestingContract.investors(aDifferentSigner.address)).isRegistered).to.equal(true);
       expect(await vestingContract.investorsCount()).to.equal(2);
     });
 
@@ -162,48 +175,48 @@ describe("Vesting contract", function () {
     });
 
     it('reverts when adding a different DAO address', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addDAO(deployerAddress);
 
-      await expect(vestingContract.addDAO(otherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__OnlyOneDAOAllowed")
+      await expect(vestingContract.addDAO(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__OnlyOneDAOAllowed")
     });
 
     it('reverts if a team member or dao is added as investor', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addTeamMember(deployerAddress);
-      await vestingContract.addDAO(otherSigner.address);
+      await vestingContract.addDAO(aDifferentSigner.address);
 
       await expect(vestingContract.addInvestor(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addInvestor(otherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addInvestor(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
     });
 
     it('reverts if an investor or dao is added as team member', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
       await vestingContract.setStartDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
-      await vestingContract.addDAO(otherSigner.address);
+      await vestingContract.addDAO(aDifferentSigner.address);
 
       await expect(vestingContract.addTeamMember(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addTeamMember(otherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addTeamMember(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
     });
 
     it('reverts if an investor or team member is added as DAO', async () => {
-      const { vestingContract, deployerAddress, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+      const { vestingContract, deployerAddress, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
 
       await vestingContract.addInvestor(deployerAddress);
-      await vestingContract.addTeamMember(otherSigner.address);
+      await vestingContract.addTeamMember(aDifferentSigner.address);
 
       await expect(vestingContract.addDAO(deployerAddress)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
-      await expect(vestingContract.addDAO(otherSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
+      await expect(vestingContract.addDAO(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__AlreadyRegistered")
     });
 
     it('reverts if a team member is added after the vesting period started', async () => {
@@ -259,19 +272,19 @@ describe("Vesting contract", function () {
         const fivePercentUnlockBonus = tokensAmount(5000000);
         const allocationPerInvestor = tokensAmount(190000000).div(2);
         const delta = tokensAmount(5);
-        const { vestingContract, tokenContract, anotherSigner, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
         await vestingContract.setStartDate(tomorrowTimestamp);
-        await vestingContract.addTeamMembers([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addTeamMembers([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.teamMembers(otherSigner.address);
+        const otherBeneficiary = await vestingContract.teamMembers(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.teamMembers(anotherSigner.address);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(fivePercentUnlockBonus, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -290,22 +303,22 @@ describe("Vesting contract", function () {
         const fiveMillionTokens = tokensAmount(5000000);
         const allocationPerInvestor = tokensAmount(190000000).div(2);
         const delta = tokensAmount(4);
-        const { vestingContract, tokenContract, anotherSigner, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
         await vestingContract.setStartDate(tomorrowTimestamp);
-        await vestingContract.addTeamMembers([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addTeamMembers([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         // TODO: Review this
         await time.increase((time.duration.days((numberOfDaysInTwoYears / 2) - 2.5)));
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.teamMembers(otherSigner.address);
+        const otherBeneficiary = await vestingContract.teamMembers(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.teamMembers(anotherSigner.address);
         const expectedBalanceForBeneficiares = allocationPerInvestor.div(2).add(fiveMillionTokens);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(expectedBalanceForBeneficiares, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -324,22 +337,22 @@ describe("Vesting contract", function () {
         const fiveMillionTokens = tokensAmount(5000000);
         const allocationPerInvestor = tokensAmount(190000000).div(2);
         const delta = tokensAmount(1);
-        const { vestingContract, tokenContract, anotherSigner, otherSigner } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner } = await loadFixture(deployFixture);
         const tomorrow = await time.latest() + time.duration.seconds(10);
         await vestingContract.setStartDate(tomorrow);
-        await vestingContract.addTeamMembers([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addTeamMembers([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrow);
         await time.increase(time.duration.days(numberOfDaysInTwoYears));
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.teamMembers(otherSigner.address);
+        const otherBeneficiary = await vestingContract.teamMembers(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.teamMembers(anotherSigner.address);
         const expectedBalanceForBeneficiares = allocationPerInvestor.add(fiveMillionTokens);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(expectedBalanceForBeneficiares, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -366,19 +379,19 @@ describe("Vesting contract", function () {
         const fivePercentUnlockBonus = tokensAmount(1250000);
         const allocationPerInvestor = tokensAmount(47500000).div(2);
         const delta = tokensAmount(1);
-        const { vestingContract, tokenContract, anotherSigner, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
         await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.investors(otherSigner.address);
+        const otherBeneficiary = await vestingContract.investors(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.investors(anotherSigner.address);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(fivePercentUnlockBonus, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(fivePercentUnlockBonus, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -394,27 +407,27 @@ describe("Vesting contract", function () {
         // 95% remaining tokens = 47.500.000 is split into the investors allocation
         // When claiming, the investor should get 1,250,000 tokens plus 50% of the allocation = 11,875,000 tokens + 1,250,000 tokens = 25,000,000 tokens
         // Arrange
-        const { vestingContract, tokenContract, anotherSigner, otherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
         const fivePercentUnlockBonus = tokensAmount(1250000);
         const allocationPerInvestor = tokensAmount(47500000).div(2); // 23,750,000
         const delta = tokensAmount(1);
         await vestingContract.setDexLaunchDate(tomorrowTimestamp);
-        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         //TODO: Review this
         await time.increase((time.duration.days((numberOfDaysInTwoYears / 2) - 2.5)));
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.investors(otherSigner.address);
+        const otherBeneficiary = await vestingContract.investors(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.investors(anotherSigner.address);
         // 23,750,000 / 2 = 11,875,000
         // 11,875,000 + 1,250,000 = 13,125,000
         const expectedBalanceForBeneficiares = allocationPerInvestor.div(2).add(fivePercentUnlockBonus);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(expectedBalanceForBeneficiares, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -430,26 +443,26 @@ describe("Vesting contract", function () {
         // 95% remaining tokens = 47.500.000 is split into the investors allocation
         // When claiming, the investor should get 1,250,000 tokens plus 100% of the allocation = 23.750.000 tokens + 1,250,000 tokens = 25,000,000 tokens
         // Arrange
-        const { vestingContract, tokenContract, anotherSigner, otherSigner } = await loadFixture(deployFixture);
+        const { vestingContract, tokenContract, anotherSigner, aDifferentSigner } = await loadFixture(deployFixture);
         const fivePercentUnlockBonus = tokensAmount(1250000);
         const allocationPerInvestor = tokensAmount(47500000).div(2); // 23,750,000
         const delta = tokensAmount(1);
         const tomorrow = await time.latest() + time.duration.seconds(10);
         await vestingContract.setDexLaunchDate(tomorrow);
-        await vestingContract.addInvestors([otherSigner.address, anotherSigner.address]);
+        await vestingContract.addInvestors([aDifferentSigner.address, anotherSigner.address]);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrow);
         await time.increase(time.duration.days(numberOfDaysInTwoYears));
         // Act
-        await vestingContract.connect(otherSigner).claim();
+        await vestingContract.connect(aDifferentSigner).claim();
         await vestingContract.connect(anotherSigner).claim();
         // Assert
-        const otherBeneficiary = await vestingContract.investors(otherSigner.address);
+        const otherBeneficiary = await vestingContract.investors(aDifferentSigner.address);
         const anotherBeneficiary = await vestingContract.investors(anotherSigner.address);
         // 23,750,000 + 1,250,000 = 25,000,000
         const expectedBalanceForBeneficiares = allocationPerInvestor.add(fivePercentUnlockBonus);
-        expect(await tokenContract.balanceOf(otherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
+        expect(await tokenContract.balanceOf(aDifferentSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(await tokenContract.balanceOf(anotherSigner.address)).to.be.closeTo(expectedBalanceForBeneficiares, delta);
         expect(otherBeneficiary.claimed).to.be.closeTo(expectedBalanceForBeneficiares, delta)
         expect(otherBeneficiary.hasClaimedUnlockedTokens).to.equal(true);
@@ -478,7 +491,7 @@ describe("Vesting contract", function () {
         await vestingContract.setDexLaunchDate(tomorrowTimestamp);
         await vestingContract.addDAO(deployerAddress);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         await time.increase((time.duration.days((numberOfDaysInThreeYears / 2))));
         // Act
@@ -497,7 +510,7 @@ describe("Vesting contract", function () {
         await vestingContract.setDexLaunchDate(tomorrowTimestamp);
         await vestingContract.addDAO(deployerAddress);
         await approveAndFundContract(vestingContract, tokenContract, oneBillionNumber);
-        await vestingContract.initializeTokenDistributionsAmount();
+        await vestingContract.initializeTokenDistribution();
         await time.increaseTo(tomorrowTimestamp);
         await time.increase(time.duration.days(numberOfDaysInThreeYears));
         // Act

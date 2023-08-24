@@ -179,7 +179,7 @@ contract Vesting is Ownable, ReentrancyGuard {
      * @notice InvestorsTokensAmountOnUnlock = 5% of the InvestorsTokensAmount
      * @notice DAOTokensAmount = 5% of the total contract balance
      */
-    function initializeTokenDistributionsAmount() public onlyOwner {
+    function initializeTokenDistribution() public onlyOwner {
         uint contractsBalance = Token.balanceOf(address(this));
         teamTokensAmount = _calculatePercentageOf(contractsBalance, 20);
         teamTokensAmountOnUnlock = _calculatePercentageOf(teamTokensAmount, 5);
