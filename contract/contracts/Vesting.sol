@@ -4,7 +4,7 @@ pragma solidity ^0.8.11;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {console} from "hardhat/console.sol";
+// import {console} from "hardhat/console.sol";
 
 error Vesting__AlreadyRegistered();
 error Vesting__InvalidAddress();
@@ -137,15 +137,6 @@ contract Vesting is Ownable, ReentrancyGuard {
         uint amount = _available() + unlockBonus;
         _beneficiary.claimed += amount;
         Token.safeTransfer(msg.sender, amount);
-    }
-
-    function available()
-        external
-        view
-        RegisteredOnly(msg.sender)
-        returns (uint availableTokens)
-    {
-        return _available();
     }
 
     /**
