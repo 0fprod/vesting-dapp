@@ -39,11 +39,11 @@ contract Vesting is Ownable, ReentrancyGuard {
     uint public investorsVestingDuration;
     uint public daoVestingDuration;
 
-    uint public teamTokensAmount = 0;
-    uint public teamTokensAmountOnUnlock = 0;
-    uint public investorsTokensAmount = 0;
-    uint public investorsTokensAmountOnUnlock = 0;
-    uint public daoTokensAmount = 0;
+    uint public teamAllocation = 0;
+    uint public teamUnlockBonus = 0;
+    uint public investorsAllocation = 0;
+    uint public investorsUnlockBonus = 0;
+    uint public daoAllocation = 0;
 
     constructor(address _token) {
         Token = IERC20(_token);
@@ -86,76 +86,62 @@ contract Vesting is Ownable, ReentrancyGuard {
 
     function claim() public nonReentrant RegisteredOnly(msg.sender) {
         if (_isTeamMember(msg.sender)) {
-            _claimTeamTokens();
+            Beneficiary storage beneficiary = teamMembers[msg.sender];
+            _claim(
+                beneficiary,
+                teamAllocation,
+                teamUnlockBonus,
+                teamMembersCount,
+                startDate
+            );
             return;
         }
 
         if (_isInvestor(msg.sender)) {
-            _claimInvestorsTokens();
+            Beneficiary storage beneficiary = investors[msg.sender];
+            _claim(
+                beneficiary,
+                investorsAllocation,
+                investorsUnlockBonus,
+                investorsCount,
+                dexLaunchDate
+            );
             return;
         }
 
         if (_isDAO(msg.sender)) {
-            _claimDAOTokens();
+            Beneficiary storage beneficiary = dao[msg.sender];
+            _claim(beneficiary, daoAllocation, 0, daoCount, dexLaunchDate);
             return;
         }
+    }
+
+    function _claim(
+        Beneficiary storage _beneficiary,
+        uint _allocation,
+        uint _unlockBonus,
+        uint _numberOfParticipants,
+        uint _startDate
+    ) internal {
+        if (block.timestamp < _startDate) {
+            revert Vesting__NotVestingPeriod();
+        }
+        uint unlockBonus = 0;
+
+        if (!_beneficiary.hasClaimedUnlockedTokens) {
+            unlockBonus = _unlockBonus / _numberOfParticipants;
+            _beneficiary.hasClaimedUnlockedTokens = true;
+            _beneficiary.allocation = _allocation / _numberOfParticipants;
+        }
+
+        uint amount = _available(_beneficiary) + unlockBonus;
+        _beneficiary.claimed += amount;
+        Token.safeTransfer(msg.sender, amount);
     }
 
     // function available() public RegisteredOnly(msg.sender) returns (uint) {
     //     return _available(msg.sender);
     // }
-
-    function _claimTeamTokens() internal {
-        if (block.timestamp < startDate) {
-            revert Vesting__NotVestingPeriod();
-        }
-        Beneficiary storage beneficiary = teamMembers[msg.sender];
-        uint unlockBonus = 0;
-
-        if (!beneficiary.hasClaimedUnlockedTokens) {
-            unlockBonus = teamTokensAmountOnUnlock / teamMembersCount;
-            beneficiary.hasClaimedUnlockedTokens = true;
-            beneficiary.allocation = teamTokensAmount / teamMembersCount;
-        }
-
-        uint amount = _available(beneficiary) + unlockBonus;
-        beneficiary.claimed += amount;
-        Token.safeTransfer(msg.sender, amount);
-    }
-
-    function _claimInvestorsTokens() internal {
-        if (block.timestamp < dexLaunchDate) {
-            revert Vesting__NotVestingPeriod();
-        }
-        Beneficiary storage beneficiary = investors[msg.sender];
-        uint unlockBonus = 0;
-
-        if (!beneficiary.hasClaimedUnlockedTokens) {
-            unlockBonus = investorsTokensAmountOnUnlock / investorsCount;
-            beneficiary.hasClaimedUnlockedTokens = true;
-            beneficiary.allocation = investorsTokensAmount / investorsCount;
-        }
-
-        uint amount = _available(beneficiary) + unlockBonus;
-        beneficiary.claimed += amount;
-        Token.safeTransfer(msg.sender, amount);
-    }
-
-    function _claimDAOTokens() internal {
-        if (block.timestamp < dexLaunchDate) {
-            revert Vesting__NotVestingPeriod();
-        }
-        Beneficiary storage beneficiary = dao[msg.sender];
-
-        if (!beneficiary.hasClaimedUnlockedTokens) {
-            beneficiary.hasClaimedUnlockedTokens = true;
-            beneficiary.allocation = daoTokensAmount;
-        }
-
-        uint amount = _available(beneficiary);
-        beneficiary.claimed += amount;
-        Token.safeTransfer(msg.sender, amount);
-    }
 
     /**
      * @dev Funds the contract with ERC20 tokens
@@ -179,20 +165,15 @@ contract Vesting is Ownable, ReentrancyGuard {
      */
     function initializeTokenDistribution() public onlyOwner {
         uint contractsBalance = Token.balanceOf(address(this));
-        teamTokensAmount = _calculatePercentageOf(contractsBalance, 20);
-        teamTokensAmountOnUnlock = _calculatePercentageOf(teamTokensAmount, 5);
-        teamTokensAmount = teamTokensAmount - teamTokensAmountOnUnlock;
+        teamAllocation = _calculatePercentageOf(contractsBalance, 20);
+        teamUnlockBonus = _calculatePercentageOf(teamAllocation, 5);
+        teamAllocation = teamAllocation - teamUnlockBonus;
 
-        investorsTokensAmount = _calculatePercentageOf(contractsBalance, 5);
-        investorsTokensAmountOnUnlock = _calculatePercentageOf(
-            investorsTokensAmount,
-            5
-        );
-        investorsTokensAmount =
-            investorsTokensAmount -
-            investorsTokensAmountOnUnlock;
+        investorsAllocation = _calculatePercentageOf(contractsBalance, 5);
+        investorsUnlockBonus = _calculatePercentageOf(investorsAllocation, 5);
+        investorsAllocation = investorsAllocation - investorsUnlockBonus;
 
-        daoTokensAmount = _calculatePercentageOf(contractsBalance, 5);
+        daoAllocation = _calculatePercentageOf(contractsBalance, 5);
     }
 
     // TODO: Call only once

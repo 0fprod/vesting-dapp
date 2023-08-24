@@ -85,11 +85,11 @@ describe("Vesting contract", function () {
       await vestingContract.addDAO(daoAddress.address);
       await vestingContract.initializeTokenDistribution();
       // Assert
-      expect(await vestingContract.teamTokensAmount()).to.equal(teamMembersAllocation.sub(teamMembersUnlockBonus));
-      expect(await vestingContract.teamTokensAmountOnUnlock()).to.equal(teamMembersUnlockBonus);
-      expect(await vestingContract.investorsTokensAmount()).to.equal(investorsAndDaoAllocation.sub(investorsUnlockBonus));
-      expect(await vestingContract.investorsTokensAmountOnUnlock()).to.equal(investorsUnlockBonus);
-      expect(await vestingContract.daoTokensAmount()).to.equal(investorsAndDaoAllocation);
+      expect(await vestingContract.teamAllocation()).to.equal(teamMembersAllocation.sub(teamMembersUnlockBonus));
+      expect(await vestingContract.teamUnlockBonus()).to.equal(teamMembersUnlockBonus);
+      expect(await vestingContract.investorsAllocation()).to.equal(investorsAndDaoAllocation.sub(investorsUnlockBonus));
+      expect(await vestingContract.investorsUnlockBonus()).to.equal(investorsUnlockBonus);
+      expect(await vestingContract.daoAllocation()).to.equal(investorsAndDaoAllocation);
       expect(await vestingContract.investorsCount()).to.equal(investorsAddresses.length);
       expect(await vestingContract.teamMembersCount()).to.equal(teamMembersAddreses.length);
       expect(await vestingContract.daoCount()).to.equal(1);
