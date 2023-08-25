@@ -39,7 +39,7 @@ describe("Vesting contract", function () {
     };
   }
 
-  describe('Deployment', () => {
+  describe('Deployment (Only owner)', () => {
     it('Should deploy with the correct token address', async () => {
       const { vestingContract, tokenContract } = await loadFixture(deployFixture);
       expect(await vestingContract.Token()).to.equal(tokenContract.address);
@@ -51,7 +51,7 @@ describe("Vesting contract", function () {
       expect(await tokenContract.balanceOf(vestingContract.address)).to.equal(oneBillionTokens);
     });
 
-    it('defines dates', async () => {
+    it('defines dates (dexLaunch and tge)', async () => {
       // DEX Launch is not fixed date.
       const { vestingContract, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
@@ -96,7 +96,7 @@ describe("Vesting contract", function () {
     });
   })
 
-  describe('Manage beneficiaries', () => {
+  describe('Manage beneficiaries (Only owner)', () => {
     it('adds team members', async () => {
       const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
@@ -110,7 +110,7 @@ describe("Vesting contract", function () {
       expect(await vestingContract.teamMembersCount()).to.equal(3);
     });
 
-    it('adds an investor', async () => {
+    it('adds investors', async () => {
       const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
 
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
@@ -156,7 +156,7 @@ describe("Vesting contract", function () {
       await expect(vestingContract.addDAO(aDifferentSigner.address)).to.be.revertedWithCustomError(vestingContract, "Vesting__OnlyOneDAOAllowed")
     });
 
-    it('reverts if a registered address is added to a different group', async () => {
+    it('reverts if a registered address is added to a different group (team member, investor or dao)', async () => {
       const { vestingContract, deployerAddress, aSigner, anotherSigner, tomorrowTimestamp } = await loadFixture(deployFixture);
       await vestingContract.setStartDate(tomorrowTimestamp);
       await vestingContract.setDexLaunchDate(tomorrowTimestamp);
@@ -189,7 +189,7 @@ describe("Vesting contract", function () {
   // TeamMembers --> 5% unlocked since June 2023. Linear vesting over 24 months
   // Investors --> 5 % unlocked at DEX Launch. Linear vesting over 24 months.
   // DAO --> Linear vesting over 36 months after DEX launch. Its one wallet.
-  describe('Claiming', () => {
+  describe('Claiming (only registered addresses)', () => {
     // Scenarios for each group (Team, Investors, DAO):
     // Before the StartDate or the DEX Launch (0%)
     // During the vesting period (50%)
@@ -272,7 +272,7 @@ describe("Vesting contract", function () {
         expect(anotherBeneficiary.allocation).to.equal(allocationPerInvestor)
       });
 
-      it('allows to claims the correct amount at 100% of the vesting period', async () => {
+      it('allows to claim the correct amount at 100% of the vesting period', async () => {
         // Asuming we have 2 team members.
         // 5% of 200,000,000 tokens = 10,000,000 tokens
         // Each team member gets 5,000,000 tokens (on first claim)
@@ -381,7 +381,7 @@ describe("Vesting contract", function () {
         expect(anotherBeneficiary.allocation).to.equal(allocationPerInvestor)
       });
 
-      it('allows to claims the correct amount at 100% of the vesting period', async () => {
+      it('allows to claim the correct amount at 100% of the vesting period', async () => {
         // Assuming we have 2 investors.
         // 5% of 50,000,000 tokens = 2,500,000 tokens. Each investor gets the unlock bonus on first claim (1,250,000 tokens)
         // 95% remaining tokens = 47.500.000 is split into the investors allocation
@@ -447,7 +447,7 @@ describe("Vesting contract", function () {
         expect(await tokenContract.balanceOf(deployerAddress)).to.closeTo(allocation.div(2), delta);
       });
 
-      it('allows to claims the correct amount at 100% of the vesting period', async () => {
+      it('allows to claim the correct amount at 100% of the vesting period', async () => {
         // Arrange
         const allocation = tokensAmount(50000000);
         const { vestingContract, tokenContract, deployerAddress, tomorrowTimestamp } = await loadFixture(deployFixture);
