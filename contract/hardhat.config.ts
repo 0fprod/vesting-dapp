@@ -34,7 +34,7 @@ const config: HardhatUserConfig = {
   watcher: {
     test: {
       tasks: [{ command: 'test', params: { testFiles: ['{path}'] } }],
-      files: ['./test/**/*'],
+      files: ['./test/**/*.spec.ts'],
       verbose: true,
       clearOnStart: true,
       start: 'echo Running my test task now..',
