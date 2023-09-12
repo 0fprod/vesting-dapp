@@ -178,6 +178,10 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         }
     }
 
+    function contractBalance() public view returns (uint) {
+        return Token.balanceOf(address(this));
+    }
+
     /**
      * @dev Calculates the percentage of a number
      * @param amount The number to calculate the percentage of

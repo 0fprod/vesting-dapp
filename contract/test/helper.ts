@@ -1,7 +1,7 @@
 import { BigNumber } from "ethers";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { Token, Vesting, VestingTeamMember } from "../typechain-types";
+import { Token, Vesting, VestingCoreTeamMembers } from "../typechain-types";
 
 export function tokensAmount(amount: number): BigNumber {
   return ethers.utils.parseEther(`${amount}`)
@@ -15,7 +15,7 @@ export function mintTokensFor(tokenContract: Token, signer: SignerWithAddress, a
   return tokenContract.connect(signer).faucet(signer.address, tokensAmount(amount))
 }
 
-export async function approveAndFundContract(stakingContract: Vesting | VestingTeamMember, tokenContract: Token, amount: number) {
+export async function approveAndFundContract(stakingContract: Vesting | VestingCoreTeamMembers, tokenContract: Token, amount: number) {
   const tokens = tokensAmount(amount);
   await approveWith(tokenContract, stakingContract.address, amount);
   await stakingContract.fundContractWithErc20Token(tokens)
