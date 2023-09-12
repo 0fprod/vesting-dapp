@@ -18,8 +18,9 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
     IERC20 public immutable Token;
 
     struct Beneficiary {
-        uint256 allocation;
-        uint256 claimed;
+        uint allocation;
+        uint unlockBonus;
+        uint claimed;
         bool isRegistered;
         bool hasClaimedUnlockedTokens;
     }
@@ -55,6 +56,9 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         _;
     }
 
+    /**
+     * @dev Verifies that the address is valid (not 0)
+     */
     modifier isValidAddress(address _beneficiary) {
         if (_beneficiary == address(0)) {
             revert Vesting__InvalidAddress();
@@ -62,23 +66,30 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         _;
     }
 
+    /**
+     * @dev Allows a beneficiary to claim his unlocked tokens
+     */
     function claim() public nonReentrant RegisteredOnly(msg.sender) {
         Beneficiary storage _beneficiary = beneficiaries[msg.sender];
         _claim(_beneficiary);
     }
 
+    /**
+     * @dev Allows a beneficiary to claim his unlocked tokens
+     * @param _beneficiary Address of the beneficiary
+     */
     function _claim(Beneficiary storage _beneficiary) internal {
         if (block.timestamp < startDate) {
             revert Vesting__NotVestingPeriod();
         }
-        uint unlockBonus = 0;
+        uint amount = 0;
 
         if (!_beneficiary.hasClaimedUnlockedTokens) {
-            unlockBonus = _calculatePercentageOf(_beneficiary.allocation, 5);
             _beneficiary.hasClaimedUnlockedTokens = true;
+            amount += _beneficiary.unlockBonus;
         }
 
-        uint amount = _available(_beneficiary) + unlockBonus;
+        amount += _available(_beneficiary);
         _beneficiary.claimed += amount;
         Token.safeTransfer(msg.sender, amount);
     }
@@ -103,7 +114,15 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         if (block.timestamp > startDate) {
             revert Vesting__NotAllowedAfterVestingStarted();
         }
-        beneficiaries[_member] = Beneficiary(_allocation, 0, true, false);
+        uint fivePercent = _calculatePercentageOf(_allocation, 5);
+        _allocation = _allocation - fivePercent;
+        beneficiaries[_member] = Beneficiary(
+            _allocation,
+            fivePercent, // unlockBonus
+            0, // claimed
+            true,
+            false
+        );
     }
 
     /**
@@ -123,6 +142,10 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         }
     }
 
+    /**
+     * @dev Returns the amount of tokens available for a beneficiary to claim
+     * @param _beneficiary Address of the beneficiary
+     */
     function _available(
         Beneficiary memory _beneficiary
     ) internal view returns (uint availableTokens) {
@@ -130,6 +153,12 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         return released - _beneficiary.claimed;
     }
 
+    /**
+     * @dev Calculates the amount of tokens released for a beneficiary
+     * @param _beneficiary Address of the beneficiary
+     * @param _startDate Start date of the vesting period
+     * @param _duration Duration of the vesting period
+     */
     function _released(
         Beneficiary memory _beneficiary,
         uint _startDate,
@@ -139,16 +168,12 @@ contract VestingTeamMember is Ownable, ReentrancyGuard {
         uint allocation = _beneficiary.allocation;
         uint _endPeriod = _startDate + _duration;
 
-        if (_beneficiary.hasClaimedUnlockedTokens) {
-            uint fivePercent = _calculatePercentageOf(allocation, 5);
-            allocation = allocation - fivePercent;
-        }
-
         if (_now > _endPeriod) {
             return allocation;
         } else {
             uint timePassed = _now - _startDate;
             uint amount = (allocation * timePassed) / _duration;
+
             return amount;
         }
     }
