@@ -29,6 +29,11 @@ const config: HardhatUserConfig = {
       ethNetwork: "goerli",  // or a Goerli RPC endpoint from Infura/Alchemy/Chainstack etc.
       zksync: true,
     },
+    zkSyncMainnet: {
+      url: "https://mainnet.era.zksync.io",
+      ethNetwork: "mainnet",  // or a Mainnet RPC endpoint from Infura/Alchemy/Chainstack etc.
+      zksync: true,
+    },
   },
   // Tests watcher
   watcher: {

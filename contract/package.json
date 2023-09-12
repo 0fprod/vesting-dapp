@@ -3,15 +3,13 @@
   "scripts": {
     "test": "hardhat test --network hardhat",
     "test:watch": "hardhat watch test --network hardhat",
-    "coverage": "hardhat coverage",
+    "coverage": "hardhat coverage --netowork hardhat",
     "compile": "hardhat compile",
-    "build": "npx thirdweb@latest detect",
-    "deploy": "npx thirdweb@latest deploy",
-    "release": "npx thirdweb@latest release"
+    "deploy:zksynctest": "hardhat deploy-zksync --script 00-team-members-vesting.ts --network zkSyncTestnet",
+    "deploy:zksync": "hardhat deploy-zksync --script 00-team-members-vesting.ts --network zkSyncMainnet"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.2",
-    "@thirdweb-dev/contracts": "^3"
+    "@openzeppelin/contracts": "^4.9.2"
   },
   "devDependencies": {
     "@ethersproject/abi": "^5.4.7",

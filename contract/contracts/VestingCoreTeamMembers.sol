@@ -13,7 +13,7 @@ error Vesting__NotRegistered();
 error Vesting__NotVestingPeriod();
 error Vesting__NotAllowedAfterVestingStarted();
 
-contract VestingTeamMember is Ownable, ReentrancyGuard {
+contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     IERC20 public immutable Token;
 
