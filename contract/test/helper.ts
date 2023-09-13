@@ -15,12 +15,6 @@ export function mintTokensFor(tokenContract: Token, signer: SignerWithAddress, a
   return tokenContract.connect(signer).faucet(signer.address, tokensAmount(amount))
 }
 
-export async function approveAndFundContract(vestingContract: Vesting | VestingCoreTeamMembers, tokenContract: Token, amount: number) {
-  const tokens = tokensAmount(amount);
-  await approveWith(tokenContract, vestingContract.address, amount);
-  await vestingContract.fundContractWithErc20Token(tokens)
-}
-
 export async function approveWith(tokenContract: Token, address: string, amount: number) {
   const tokens = ethers.utils.parseEther(`${amount}`);
   await tokenContract.approve(address, tokens);

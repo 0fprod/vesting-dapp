@@ -5,6 +5,7 @@
     "test:watch": "hardhat watch test --network hardhat",
     "coverage": "hardhat coverage --netowork hardhat",
     "compile": "hardhat compile",
+    "deploy:zklocal": "hardhat deploy-zksync --script 00-team-members-vesting.ts --network localhost",
     "deploy:zksynctest": "hardhat deploy-zksync --script 00-team-members-vesting.ts --network zkSyncTestnet",
     "deploy:zksync": "hardhat deploy-zksync --script 00-team-members-vesting.ts --network zkSyncMainnet"
   },

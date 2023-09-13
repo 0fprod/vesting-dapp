@@ -4,14 +4,10 @@ pragma solidity ^0.8.11;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {console} from "hardhat/console.sol";
 
-error Vesting__AlreadyRegistered();
-error Vesting__InvalidAddress();
-error Vesting__InvalidInput();
 error Vesting__NotRegistered();
 error Vesting__NotVestingPeriod();
-error Vesting__NotAllowedAfterVestingStarted();
+error Vesting__InsufficientContractFunds();
 
 contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -41,45 +37,29 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         startDate = _startDate;
         vestingDuration = _vestingDuration;
 
-        for (uint256 i = 0; i < _members.length; i++) {
-            addBeneficiary(_members[i], _allocations[i]);
+        for (uint i = 0; i < _members.length; i++) {
+            address _member = _members[i];
+            uint _allocation = _allocations[i];
+            uint fivePercent = _calculatePercentageOf(_allocation, 5);
+            uint allocationWithouUnlockBonus = _allocation - fivePercent;
+            beneficiaries[_member] = Beneficiary(
+                allocationWithouUnlockBonus,
+                fivePercent, // unlockBonus
+                0, // claimed
+                true, // isRegistered
+                false // hasClaimedUnlockedTokens
+            );
         }
-    }
-
-    /**
-     * @dev Verifies that the address is added only once
-     */
-    modifier unregisteredOnly(address _beneficiary) {
-        if (beneficiaries[_beneficiary].isRegistered) {
-            revert Vesting__AlreadyRegistered();
-        }
-        _;
-    }
-
-    /**
-     * @dev Verifies that the address is registered
-     */
-    modifier RegisteredOnly(address _beneficiary) {
-        if (beneficiaries[_beneficiary].isRegistered == false) {
-            revert Vesting__NotRegistered();
-        }
-        _;
-    }
-
-    /**
-     * @dev Verifies that the address is valid (not 0)
-     */
-    modifier isValidAddress(address _beneficiary) {
-        if (_beneficiary == address(0)) {
-            revert Vesting__InvalidAddress();
-        }
-        _;
     }
 
     /**
      * @dev Allows a beneficiary to claim his unlocked tokens
      */
-    function claim() public nonReentrant RegisteredOnly(msg.sender) {
+    function claim() public nonReentrant {
+        if (beneficiaries[msg.sender].isRegistered == false) {
+            revert Vesting__NotRegistered();
+        }
+
         Beneficiary storage _beneficiary = beneficiaries[msg.sender];
         _claim(_beneficiary);
     }
@@ -92,6 +72,11 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         if (block.timestamp < startDate) {
             revert Vesting__NotVestingPeriod();
         }
+
+        if (contractBalance() < _available(_beneficiary)) {
+            revert Vesting__InsufficientContractFunds();
+        }
+
         uint amount = 0;
 
         if (!_beneficiary.hasClaimedUnlockedTokens) {
@@ -105,55 +90,6 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Funds the contract with ERC20 tokens
-     * @notice Only the owner can call this function
-     * @param _amount Amount of tokens to fund the contract with
-     */
-    function fundContractWithErc20Token(uint256 _amount) public onlyOwner {
-        Token.transferFrom(msg.sender, address(this), _amount);
-    }
-
-    /**
-     * @dev Adds a team member to the vesting contract
-     * @param _member Address of the team member
-     */
-    function addBeneficiary(
-        address _member,
-        uint _allocation
-    ) public onlyOwner unregisteredOnly(_member) isValidAddress(_member) {
-        if (block.timestamp > startDate) {
-            revert Vesting__NotAllowedAfterVestingStarted();
-        }
-
-        uint fivePercent = _calculatePercentageOf(_allocation, 5);
-        _allocation = _allocation - fivePercent;
-        beneficiaries[_member] = Beneficiary(
-            _allocation,
-            fivePercent, // unlockBonus
-            0, // claimed
-            true,
-            false
-        );
-    }
-
-    /**
-     * @dev Adds several team members to the vesting contract
-     * @param _members Array of addresses of the team members
-     */
-    function addBeneficiaries(
-        address[] memory _members,
-        uint[] memory _allocations
-    ) public onlyOwner {
-        if (_members.length != _allocations.length) {
-            revert Vesting__InvalidInput();
-        }
-
-        for (uint256 i = 0; i < _members.length; i++) {
-            addBeneficiary(_members[i], _allocations[i]);
-        }
-    }
-
-    /**
      * @dev Returns the amount of tokens available for a beneficiary to claim
      * @param _beneficiary Address of the beneficiary
      */
@@ -161,6 +97,7 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         Beneficiary memory _beneficiary
     ) internal view returns (uint availableTokens) {
         uint __released = _released(_beneficiary, startDate, vestingDuration);
+
         if (_beneficiary.claimed >= __released) {
             return 0;
         }
@@ -209,13 +146,32 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         return (amount * percentage) / 100;
     }
 
-    function available() public view RegisteredOnly(msg.sender) returns (uint) {
-        Beneficiary memory beneficiary = beneficiaries[msg.sender];
+    /**
+     * @param _address Address of the beneficiary
+     * @return The amount of tokens available for a beneficiary to claim
+     */
+    function available(address _address) public view returns (uint) {
+        Beneficiary memory beneficiary = beneficiaries[_address];
+
+        if (beneficiary.isRegistered == false) {
+            return 0;
+        }
+
         return _available(beneficiary);
     }
 
-    function released() public view RegisteredOnly(msg.sender) returns (uint) {
-        Beneficiary memory beneficiary = beneficiaries[msg.sender];
+    /**
+     *
+     * @param _address Address of the beneficiary
+     * @return The amount of tokens released for a beneficiary
+     */
+    function released(address _address) public view returns (uint) {
+        Beneficiary memory beneficiary = beneficiaries[_address];
+
+        if (beneficiary.isRegistered == false) {
+            return 0;
+        }
+
         return _released(beneficiary, startDate, vestingDuration);
     }
 }

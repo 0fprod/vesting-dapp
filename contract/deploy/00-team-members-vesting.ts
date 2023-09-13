@@ -6,6 +6,7 @@ import { Deployer } from "@matterlabs/hardhat-zksync-deploy";
 // load env file
 import dotenv from "dotenv";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { getAllocations, getTeamMembers } from "../test/helper";
 dotenv.config();
 
 // load wallet private key from env file
@@ -31,12 +32,14 @@ export default async function (hre: HardhatRuntimeEnvironment) {
   const vestingDuration = time.duration.days(numberOfDaysInTwoYears);
   const septermberFirst = new Date("2023-09-01T00:00:00Z");
   const startDate = Math.floor(septermberFirst.getTime() / 1000);
-  const deploymentFee = await deployer.estimateDeployFee(artifact, [gallTestnetAddress, startDate, vestingDuration]);
+  const members = getTeamMembers();
+  const allocations = getAllocations();
+  const deploymentFee = await deployer.estimateDeployFee(artifact, [gallTestnetAddress, startDate, vestingDuration, members, allocations]);
 
   // Deploy this contract.
   const parsedFee = ethers.utils.formatEther(deploymentFee.toString());
   console.log(`The deployment is estimated to cost ${parsedFee} ETH`);
-  const teamMembersVestingContract = await deployer.deploy(artifact, [gallTestnetAddress, startDate, vestingDuration]);
+  const teamMembersVestingContract = await deployer.deploy(artifact, [gallTestnetAddress, startDate, vestingDuration, members, allocations]);
 
   // Show the contract info.
   const contractAddress = teamMembersVestingContract.address;
@@ -51,7 +54,7 @@ export default async function (hre: HardhatRuntimeEnvironment) {
     const verificationId = await hre.run("verify:verify", {
       address: contractAddress,
       contract: contractFullyQualifedName,
-      constructorArguments: [gallTestnetAddress, startDate, vestingDuration],
+      constructorArguments: [gallTestnetAddress, startDate, vestingDuration, members, allocations],
       bytecode: artifact.bytecode,
     });
     console.log("🚀 ~ verificationId:", verificationId);

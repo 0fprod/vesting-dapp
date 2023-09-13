@@ -15,7 +15,7 @@ const config: HardhatUserConfig = {
   // compilers
   solidity: "0.8.18",
   zksolc: {
-    version: "1.3.13", // Uses latest available in https://github.com/matter-labs/zksolc-bin/
+    version: "1.3.14", // Uses latest available in https://github.com/matter-labs/zksolc-bin/
     settings: {},
   },
   defaultNetwork: "zkSyncTestnet",
@@ -23,6 +23,11 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       chainId: 1337, // Hardhat default
+    },
+    localhost: {
+      url: "http://127.0.0.1:8011",
+      ethNetwork: "goerli",  // or a Goerli RPC endpoint from Infura/Alchemy/Chainstack etc.
+      zksync: true,
     },
     zkSyncTestnet: {
       url: "https://testnet.era.zksync.dev",
