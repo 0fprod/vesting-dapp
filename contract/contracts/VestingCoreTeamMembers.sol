@@ -4,7 +4,7 @@ pragma solidity ^0.8.11;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-// import {console} from "hardhat/console.sol";
+import {console} from "hardhat/console.sol";
 
 error Vesting__AlreadyRegistered();
 error Vesting__InvalidAddress();
@@ -30,10 +30,20 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
     uint public startDate;
     uint public vestingDuration;
 
-    constructor(address _token, uint _startDate, uint _vestingDuration) {
+    constructor(
+        address _token,
+        uint _startDate,
+        uint _vestingDuration,
+        address[] memory _members,
+        uint[] memory _allocations
+    ) {
         Token = IERC20(_token);
         startDate = _startDate;
         vestingDuration = _vestingDuration;
+
+        for (uint256 i = 0; i < _members.length; i++) {
+            addBeneficiary(_members[i], _allocations[i]);
+        }
     }
 
     /**
@@ -114,6 +124,7 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         if (block.timestamp > startDate) {
             revert Vesting__NotAllowedAfterVestingStarted();
         }
+
         uint fivePercent = _calculatePercentageOf(_allocation, 5);
         _allocation = _allocation - fivePercent;
         beneficiaries[_member] = Beneficiary(
@@ -149,8 +160,12 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
     function _available(
         Beneficiary memory _beneficiary
     ) internal view returns (uint availableTokens) {
-        uint released = _released(_beneficiary, startDate, vestingDuration);
-        return released - _beneficiary.claimed;
+        uint __released = _released(_beneficiary, startDate, vestingDuration);
+        if (_beneficiary.claimed >= __released) {
+            return 0;
+        }
+
+        return __released - _beneficiary.claimed;
     }
 
     /**
@@ -192,5 +207,15 @@ contract VestingCoreTeamMembers is Ownable, ReentrancyGuard {
         uint percentage
     ) internal pure returns (uint) {
         return (amount * percentage) / 100;
+    }
+
+    function available() public view RegisteredOnly(msg.sender) returns (uint) {
+        Beneficiary memory beneficiary = beneficiaries[msg.sender];
+        return _available(beneficiary);
+    }
+
+    function released() public view RegisteredOnly(msg.sender) returns (uint) {
+        Beneficiary memory beneficiary = beneficiaries[msg.sender];
+        return _released(beneficiary, startDate, vestingDuration);
     }
 }
